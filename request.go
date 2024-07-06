@@ -5,27 +5,48 @@ import (
 	"encoding/json"
 )
 
-type Request struct {
-	ctx    context.Context
-	req_id string
-	params string
+type Request interface {
+	Context() context.Context
+	ID() string
+	ParseParams(v any) error
+	Method() string
+	ReplyTo() string
 }
 
-func NewRequest(ctx context.Context, req_id string, params string) Request {
-	return Request{
-		req_id: req_id,
-		params: params,
+type request struct {
+	ctx     context.Context
+	method  string
+	req_id  string
+	params  string
+	replyTo string
+}
+
+func NewRequest(ctx context.Context, method, req_id, params, replyTo string) Request {
+	return &request{
+		ctx:     ctx,
+		req_id:  req_id,
+		params:  params,
+		method:  method,
+		replyTo: replyTo,
 	}
 }
 
-func (r Request) Context() context.Context {
+func (r request) Context() context.Context {
 	return r.ctx
 }
 
-func (r Request) ID() string {
+func (r request) ID() string {
 	return r.req_id
 }
 
-func (r Request) ParseParams(v any) error {
+func (r request) ParseParams(v any) error {
 	return json.Unmarshal([]byte(r.params), v)
+}
+
+func (r request) Method() string {
+	return r.method
+}
+
+func (r request) ReplyTo() string {
+	return r.replyTo
 }

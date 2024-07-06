@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 
@@ -20,7 +19,7 @@ func main() {
 
 	rpcServer := redisrpc.NewServer(redisClient, "echo", "echo-group", "echo-consumer")
 
-	rpcServer.AddHandler("echo", func(ctx context.Context, req redisrpc.Request) (any, error) {
+	rpcServer.AddHandler("echo", func(req redisrpc.Request) (any, error) {
 		var echoReq EchoRequest
 
 		err := req.ParseParams(&echoReq)

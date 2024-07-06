@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,7 +17,7 @@ const (
 	DefaultConcurency    = 25
 )
 
-type Handler func(ctx context.Context, req Request) (any, error)
+type Handler func(req Request) (any, error)
 
 type token struct{}
 
@@ -99,32 +100,49 @@ func (s *Server) initReader() error {
 }
 
 func (s *Server) processMessage(msg redis.XMessage) {
-	method, ok := msg.Values["method"]
+	method := getField(msg, "method")
+	if method == "" {
+		return
+	}
+
+	handler, ok := s.getHandler(method)
 	if !ok {
 		return
 	}
 
-	methodName := method.(string)
-	handler, ok := s.getHandler(methodName)
-	if !ok {
-		return
-	}
-
-	var params string
-	rawParams, ok := msg.Values["params"]
-	if ok {
-		params = rawParams.(string)
-	}
+	id := getField(msg, "id")
+	params := getField(msg, "params")
+	deadline := getField(msg, "deadline")
+	replyTo := getField(msg, "reply_to")
 
 	s.sem <- token{}
 	s.wg.Add(1)
 	go func() {
-		_, err := handler(s.ctx, NewRequest(s.ctx, msg.ID, params))
-		if err != nil {
-			slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", methodName, err))
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error(fmt.Sprintf("RPC panic for %s: %v", method, r))
+			}
+
+			<-s.sem
+			s.wg.Done()
+		}()
+
+		ctx := s.ctx
+		if deadline != "" {
+			epochTime, err := strconv.ParseInt(deadline, 10, 64)
+			if err != nil {
+				slog.Error(fmt.Sprintf("RPC invalid deadline for %s: %v", method, err))
+				return
+			}
+
+			deadlineTime := time.Unix(epochTime, 0)
+			ctx, _ = context.WithDeadline(ctx, deadlineTime)
 		}
-		<-s.sem
-		s.wg.Done()
+
+		_, err := handler(NewRequest(s.ctx, method, id, params, replyTo))
+		if err != nil {
+			slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", method, err))
+		}
 	}()
 }
 
@@ -150,4 +168,18 @@ func (s *Server) getHandler(rpcName string) (Handler, bool) {
 
 	handler, ok := s.handlers[rpcName]
 	return handler, ok
+}
+
+func getField(msg redis.XMessage, field string) string {
+	rawValue, ok := msg.Values[field]
+	if !ok {
+		return ""
+	}
+
+	val, ok := rawValue.(string)
+	if !ok {
+		return ""
+	}
+
+	return val
 }
