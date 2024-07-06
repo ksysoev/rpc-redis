@@ -18,6 +18,8 @@ const (
 
 type Handler func(ctx context.Context, req Request) (any, error)
 
+type token struct{}
+
 type Server struct {
 	stream       string
 	group        string
@@ -97,25 +99,29 @@ func (s *Server) initReader() error {
 }
 
 func (s *Server) processMessage(msg redis.XMessage) {
-	rpcName, ok := msg.Values["method"].(string)
+	method, ok := msg.Values["method"]
 	if !ok {
 		return
 	}
 
-	// get the rpc handler
-	s.handlersLock.RLock()
-	handler, ok := s.handlers[rpcName]
-	s.handlersLock.RUnlock()
+	methodName := method.(string)
+	handler, ok := s.getHandler(methodName)
 	if !ok {
 		return
 	}
 
-	s.sem <- struct{}{}
+	var params string
+	rawParams, ok := msg.Values["params"]
+	if ok {
+		params = rawParams.(string)
+	}
+
+	s.sem <- token{}
 	s.wg.Add(1)
 	go func() {
-		_, err := handler(s.ctx, NewRequest(s.ctx, msg.ID, msg.Values["params"].(string)))
+		_, err := handler(s.ctx, NewRequest(s.ctx, msg.ID, params))
 		if err != nil {
-			slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", rpcName, err))
+			slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", methodName, err))
 		}
 		<-s.sem
 		s.wg.Done()
@@ -136,4 +142,12 @@ func (s *Server) AddHandler(rpcName string, handler Handler) {
 	}
 
 	s.handlers[rpcName] = handler
+}
+
+func (s *Server) getHandler(rpcName string) (Handler, bool) {
+	s.handlersLock.RLock()
+	defer s.handlersLock.RUnlock()
+
+	handler, ok := s.handlers[rpcName]
+	return handler, ok
 }
