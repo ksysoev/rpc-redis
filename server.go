@@ -82,7 +82,7 @@ func (s *Server) Run() error {
 		message := messages[0]
 
 		// get the rpc name
-		rpcName, ok := message.Values["rpcName"].(string)
+		rpcName, ok := message.Values["method"].(string)
 		if !ok {
 			continue
 		}
@@ -96,7 +96,7 @@ func (s *Server) Run() error {
 		}
 
 		go func() {
-			_, err := handler(s.ctx, Request{})
+			_, err := handler(s.ctx, NewRequest(s.ctx, message.ID, message.Values["params"].(string)))
 			if err != nil {
 				slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", rpcName, err))
 			}
