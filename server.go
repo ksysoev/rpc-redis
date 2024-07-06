@@ -11,11 +11,10 @@ import (
 
 const (
 	DefaultBlockInterval = 1000
+	DefaultConcurency    = 25
 )
 
 type Handler func(ctx context.Context, Request interface{}) (any, error)
-
-type Request struct{}
 
 type Server struct {
 	stream       string
@@ -26,6 +25,7 @@ type Server struct {
 	handlersLock *sync.RWMutex
 	ctx          context.Context
 	cancel       context.CancelFunc
+	sem          chan struct{}
 }
 
 func NewServer(redis *redis.Client, stream, group, consumer string) *Server {
@@ -39,11 +39,14 @@ func NewServer(redis *redis.Client, stream, group, consumer string) *Server {
 		handlersLock: &sync.RWMutex{},
 		ctx:          ctx,
 		cancel:       cancel,
+		consumer:     consumer,
+		sem:          make(chan struct{}, DefaultConcurency),
 	}
 }
 
 func (s *Server) Run() error {
 	for {
+		s.sem <- struct{}{}
 		// get the next message
 		msg, err := s.redis.XReadGroup(s.ctx, &redis.XReadGroupArgs{
 			Group:    s.group,
@@ -90,6 +93,8 @@ func (s *Server) Run() error {
 			if err != nil {
 				slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", rpcName, err))
 			}
+
+			<-s.sem
 		}()
 	}
 }
