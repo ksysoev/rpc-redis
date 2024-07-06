@@ -3,21 +3,15 @@ package redisrpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
-
-type Response string
-
-type rawResponse struct {
-	ID     string `json:"id"`
-	Result string `json:"result"`
-	Error  string `json:"error"`
-}
 
 type Client struct {
 	redis    *redis.Client
@@ -26,8 +20,9 @@ type Client struct {
 	cancel   context.CancelFunc
 	wg       *sync.WaitGroup
 	channel  string
-	requests map[string]chan<- Response
+	requests map[string]chan<- *Response
 	lock     *sync.RWMutex
+	counter  *atomic.Uint64
 }
 
 func NewClient(redis *redis.Client, channel string) *Client {
@@ -39,9 +34,10 @@ func NewClient(redis *redis.Client, channel string) *Client {
 		ctx:      ctx,
 		cancel:   cancel,
 		channel:  channel,
-		requests: make(map[string]chan<- Response),
+		requests: make(map[string]chan<- *Response),
 		wg:       &sync.WaitGroup{},
 		lock:     &sync.RWMutex{},
+		counter:  &atomic.Uint64{},
 	}
 
 	go client.handleResponses()
@@ -49,20 +45,23 @@ func NewClient(redis *redis.Client, channel string) *Client {
 	return client
 }
 
-func (c *Client) Call(ctx context.Context, method string, params any) (string, error) {
+func (c *Client) Call(ctx context.Context, method string, params any) (*Response, error) {
 	if method == "" {
-		return "", fmt.Errorf("method cannot be empty")
+		return nil, fmt.Errorf("method cannot be empty")
 	}
 
 	paramsBytes, err := json.Marshal(params)
 	if err != nil {
-		return "", fmt.Errorf("error marshalling params: %w", err)
+		return nil, fmt.Errorf("error marshalling params: %w", err)
 	}
 
-	respChan := c.addRequest(c.id)
-	defer c.removeRequest(c.id)
+	id := fmt.Sprintf("%d", c.counter.Add(1))
+
+	respChan := c.addRequest(id)
+	defer c.removeRequest(id)
 
 	msg := map[string]interface{}{
+		"id":       id,
 		"method":   method,
 		"params":   paramsBytes,
 		"reply_to": c.id,
@@ -74,14 +73,18 @@ func (c *Client) Call(ctx context.Context, method string, params any) (string, e
 	}).Err()
 
 	if err != nil {
-		return "", fmt.Errorf("error sending request: %w", err)
+		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	case resp := <-respChan:
-		return string(resp), nil
+		if resp.Error != "" {
+			return nil, errors.New(resp.Error)
+		}
+
+		return resp, nil
 	}
 }
 
@@ -100,32 +103,32 @@ func (c *Client) handleResponses() {
 		case <-c.ctx.Done():
 			return
 		case msg := <-pubsubChan:
-			var rawResp rawResponse
+			resp := &Response{}
 
-			err := json.Unmarshal([]byte(msg.Payload), &rawResp)
+			err := json.Unmarshal([]byte(msg.Payload), resp)
 			if err != nil {
 				slog.Error("Error unmarshalling response: " + err.Error())
 				continue
 			}
 
 			c.lock.RLock()
-			respChan, ok := c.requests[rawResp.ID]
+			respChan, ok := c.requests[resp.ID]
 			c.lock.RUnlock()
 
 			if !ok {
 				continue
 			}
 
-			respChan <- Response(rawResp.Result)
+			respChan <- resp
 		}
 	}
 }
 
-func (c *Client) addRequest(id string) <-chan Response {
+func (c *Client) addRequest(id string) <-chan *Response {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	respChan := make(chan Response)
+	respChan := make(chan *Response)
 
 	c.requests[id] = respChan
 

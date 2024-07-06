@@ -140,13 +140,28 @@ func (s *Server) processMessage(msg redis.XMessage) {
 			ctx, _ = context.WithDeadline(ctx, deadlineTime)
 		}
 
-		resp, err := handler(NewRequest(s.ctx, method, id, params, replyTo))
-		if err != nil {
-			slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", method, err))
+		result, reqErr := handler(NewRequest(s.ctx, method, id, params, replyTo))
+		if replyTo == "" {
+			return
 		}
 
-		if replyTo == "" || resp == nil {
+		encodedResult, err := json.Marshal(result)
+		if err != nil {
+			slog.Error(fmt.Sprintf("RPC error marshalling result for %s: %v", method, err))
 			return
+		}
+
+		var resp *Response
+		if err != nil {
+			resp = &Response{
+				ID:    id,
+				Error: reqErr.Error(),
+			}
+		} else {
+			resp = &Response{
+				ID:     id,
+				Result: encodedResult,
+			}
 		}
 
 		jsonResp, err := json.Marshal(resp)

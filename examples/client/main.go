@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	redisrpc "github.com/ksysoev/redis-rpc"
@@ -22,12 +23,19 @@ func main() {
 	defer rpcClient.Close()
 
 	ctx := context.Background()
-	res, err := rpcClient.Call(ctx, "echo", &EchoRequest{Message: "Hello, world!"})
+	resp, err := rpcClient.Call(ctx, "echo", &EchoRequest{Message: "Hello, world!"})
 
 	if err != nil {
 		slog.Error("Error calling RPC: " + err.Error())
 		return
 	}
 
-	slog.Info("Received response: " + res)
+	var result EchoRequest
+	err = resp.ParseResut(&result)
+	if err != nil {
+		slog.Error("Error parsing result: " + err.Error())
+		return
+	}
+
+	fmt.Println(result)
 }
