@@ -2,6 +2,7 @@ package redisrpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -13,7 +14,7 @@ import (
 
 const (
 	DefaultBatchSize     = 1
-	DefaultBlockInterval = time.Second
+	DefaultBlockInterval = 10 * time.Second
 	DefaultConcurency    = 25
 )
 
@@ -139,9 +140,23 @@ func (s *Server) processMessage(msg redis.XMessage) {
 			ctx, _ = context.WithDeadline(ctx, deadlineTime)
 		}
 
-		_, err := handler(NewRequest(s.ctx, method, id, params, replyTo))
+		resp, err := handler(NewRequest(s.ctx, method, id, params, replyTo))
 		if err != nil {
 			slog.Error(fmt.Sprintf("RPC unhandled error for %s: %v", method, err))
+		}
+
+		if replyTo == "" || resp == nil {
+			return
+		}
+
+		jsonResp, err := json.Marshal(resp)
+		if err != nil {
+			slog.Error(fmt.Sprintf("RPC error marshalling response for %s: %v", method, err))
+			return
+		}
+
+		if err := s.redis.Publish(ctx, replyTo, jsonResp).Err(); err != nil {
+			slog.Error(fmt.Sprintf("RPC error publishing response for %s: %v", method, err))
 		}
 	}()
 }

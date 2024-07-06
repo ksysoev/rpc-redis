@@ -29,7 +29,7 @@ func main() {
 
 		slog.Info("Received request: " + echoReq.Message)
 
-		return "test", nil
+		return &echoReq, nil
 	})
 
 	slog.Info("Starting RPC server")
