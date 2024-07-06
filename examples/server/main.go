@@ -17,7 +17,7 @@ func main() {
 		Addr: "localhost:6379",
 	})
 
-	rpcServer := redisrpc.NewServer(redisClient, "echo", "echo-group", "echo-consumer")
+	rpcServer := redisrpc.NewServer(redisClient, "echoStream", "echo-group", "echo-consumer")
 
 	rpcServer.AddHandler("echo", func(req redisrpc.Request) (any, error) {
 		var echoReq EchoRequest
