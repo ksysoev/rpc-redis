@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 const (
-	DefaultBlockInterval = 1000
+	DefaultBlockInterval = time.Second
 	DefaultConcurency    = 25
 )
 
-type Handler func(ctx context.Context, Request interface{}) (any, error)
+type Handler func(ctx context.Context, req Request) (any, error)
 
 type Server struct {
 	stream       string
@@ -45,9 +46,14 @@ func NewServer(redis *redis.Client, stream, group, consumer string) *Server {
 }
 
 func (s *Server) Run() error {
+	err := s.initReader()
+	if err != nil {
+		return err
+	}
+
 	for {
 		s.sem <- struct{}{}
-		// get the next message
+
 		msg, err := s.redis.XReadGroup(s.ctx, &redis.XReadGroupArgs{
 			Group:    s.group,
 			Consumer: s.consumer,
@@ -57,11 +63,12 @@ func (s *Server) Run() error {
 			NoAck:    false,
 		}).Result()
 
-		if err != nil {
-			return err
-		}
-
-		if len(msg) == 0 {
+		switch {
+		case err == redis.Nil:
+			continue
+		case err != nil:
+			return fmt.Errorf("error reading stream: %w", err)
+		case len(msg) == 0:
 			continue
 		}
 
@@ -97,6 +104,21 @@ func (s *Server) Run() error {
 			<-s.sem
 		}()
 	}
+}
+
+func (s *Server) initReader() error {
+	// create the stream
+	err := s.redis.XGroupCreateMkStream(s.ctx, s.stream, s.group, "$").Err()
+	if err != nil && !redis.HasErrorPrefix(err, "BUSYGROUP Consumer Group name already exists") {
+		return fmt.Errorf("error creating stream: %w", err)
+	}
+
+	// create the consumer
+	if err := s.redis.XGroupCreateConsumer(s.ctx, s.stream, s.group, s.consumer).Err(); err != nil {
+		return fmt.Errorf("error creating consumer: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Server) Close() {
