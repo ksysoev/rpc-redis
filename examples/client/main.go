@@ -10,7 +10,7 @@ import (
 )
 
 type EchoRequest struct {
-	Message string `json:"msg"`
+	Value string `json:"value"`
 }
 
 func main() {
@@ -19,11 +19,11 @@ func main() {
 	})
 	defer redisClient.Close()
 
-	rpcClient := redisrpc.NewClient(redisClient, "echoStream")
+	rpcClient := redisrpc.NewClient(redisClient, "echo.EchoService")
 	defer rpcClient.Close()
 
 	ctx := context.Background()
-	resp, err := rpcClient.Call(ctx, "echo", &EchoRequest{Message: "Hello, world!"})
+	resp, err := rpcClient.Call(ctx, "Echo", &EchoRequest{Value: "Hello, world!"})
 
 	if err != nil {
 		slog.Error("Error calling RPC: " + err.Error())

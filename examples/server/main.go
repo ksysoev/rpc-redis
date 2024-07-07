@@ -9,7 +9,7 @@ import (
 )
 
 type EchoRequest struct {
-	Message string `json:"msg"`
+	Value string `json:"value"`
 }
 
 func main() {
@@ -17,9 +17,9 @@ func main() {
 		Addr: "localhost:6379",
 	})
 
-	rpcServer := redisrpc.NewServer(redisClient, "echoStream", "echo-group", "echo-consumer")
+	rpcServer := redisrpc.NewServer(redisClient, "echo.EchoService", "echo-group", "echo-consumer")
 
-	rpcServer.AddHandler("echo", func(req redisrpc.Request) (any, error) {
+	rpcServer.AddHandler("Echo", func(req redisrpc.Request) (any, error) {
 		var echoReq EchoRequest
 
 		err := req.ParseParams(&echoReq)
