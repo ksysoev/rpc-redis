@@ -27,7 +27,7 @@ func main() {
 			return nil, fmt.Errorf("error parsing request: %v", err)
 		}
 
-		slog.Info("Received request: " + echoReq.Message)
+		slog.Info("Received request: " + echoReq.Value)
 
 		return &echoReq, nil
 	})
