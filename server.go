@@ -35,6 +35,9 @@ type Server struct {
 	wg           *sync.WaitGroup
 }
 
+// NewServer creates a new instance of the Server struct.
+// It takes a Redis client, stream name, consumer group name, and consumer name as parameters.
+// It returns a pointer to the newly created Server instance.
 func NewServer(redis *redis.Client, stream, group, consumer string) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -52,6 +55,16 @@ func NewServer(redis *redis.Client, stream, group, consumer string) *Server {
 	}
 }
 
+// Run starts the server and continuously reads messages from the Redis stream.
+// It initializes the reader, sets up the read arguments, and enters an infinite loop
+// to read messages from the stream. It processes each message by calling the
+// `processMessage` method.
+//
+// If an error occurs during initialization or reading the stream, it returns
+// the error. If the stream is empty, it continues to the next iteration.
+//
+// The `Run` method is responsible for running the server and handling the
+// continuous message processing from the Redis stream.
 func (s *Server) Run() error {
 	err := s.initReader()
 	if err != nil {
@@ -85,6 +98,9 @@ func (s *Server) Run() error {
 	}
 }
 
+// initReader initializes the reader by creating a stream and a consumer group.
+// It creates the stream if it doesn't exist and creates the consumer group if it doesn't exist.
+// If the consumer group already exists, it returns an error.
 func (s *Server) initReader() error {
 	// create the stream
 	err := s.redis.XGroupCreateMkStream(s.ctx, s.stream, s.group, "$").Err()
@@ -100,6 +116,13 @@ func (s *Server) initReader() error {
 	return nil
 }
 
+// processMessage processes the incoming Redis XMessage.
+// It extracts the method, id, params, deadline, and replyTo fields from the message,
+// retrieves the appropriate handler for the method, and executes it in a separate goroutine.
+// If a panic occurs during execution, it recovers and logs the error.
+// If a deadline is specified, it sets a deadline for the execution context.
+// After executing the handler, it marshals the result into JSON and creates a response.
+// Finally, it publishes the response to the specified replyTo channel using Redis.
 func (s *Server) processMessage(msg redis.XMessage) {
 	method := getField(msg, "method")
 	if method == "" {
@@ -176,11 +199,15 @@ func (s *Server) processMessage(msg redis.XMessage) {
 	}()
 }
 
+// Close stops the server gracefully by cancelling the context and waiting for all goroutines to finish.
 func (s *Server) Close() {
 	s.cancel()
 	s.wg.Wait()
 }
 
+// AddHandler adds a new RPC handler to the server.
+// It associates the given `handler` with the specified `rpcName`.
+// If a handler already exists for the same `rpcName`, it panics.
 func (s *Server) AddHandler(rpcName string, handler Handler) {
 	s.handlersLock.Lock()
 	defer s.handlersLock.Unlock()
@@ -192,6 +219,8 @@ func (s *Server) AddHandler(rpcName string, handler Handler) {
 	s.handlers[rpcName] = handler
 }
 
+// getHandler returns the handler function associated with the given RPC name.
+// It also returns a boolean value indicating whether the handler was found or not.
 func (s *Server) getHandler(rpcName string) (Handler, bool) {
 	s.handlersLock.RLock()
 	defer s.handlersLock.RUnlock()
@@ -200,6 +229,8 @@ func (s *Server) getHandler(rpcName string) (Handler, bool) {
 	return handler, ok
 }
 
+// getField retrieves the value of a specified field from a redis.XMessage.
+// If the field does not exist or the value is not a string, an empty string is returned.
 func getField(msg redis.XMessage, field string) string {
 	rawValue, ok := msg.Values[field]
 	if !ok {
