@@ -366,3 +366,102 @@ func TestParseMessage_NoDeadline(t *testing.T) {
 
 	cancel()
 }
+func TestServer_HandleResult_NoReplyTo(t *testing.T) {
+	redisClient := redis.NewClient(&redis.Options{})
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	req := NewRequest(context.Background(), "method", "123", "params", "")
+	result := "result"
+	reqErr := errors.New("request error")
+
+	err := server.handleResult(req, result, reqErr)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
+func TestServer_HandleResult_CreateResponseError(t *testing.T) {
+	redisClient := redis.NewClient(&redis.Options{})
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	req := NewRequest(context.Background(), "method", "123", "params", "reply-channel")
+	result := "result"
+	reqErr := errors.New("request error")
+
+	err := server.handleResult(req, result, reqErr)
+	if err == nil {
+		t.Error("Expected error, but got nil")
+	}
+}
+
+func TestServer_HandleResult_MarshalResponseError(t *testing.T) {
+	redisClient := redis.NewClient(&redis.Options{})
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	req := NewRequest(context.Background(), "method", "123", "params", "reply-channel")
+	result := make(chan int) // Invalid type for marshalling
+	reqErr := errors.New("request error")
+
+	err := server.handleResult(req, result, reqErr)
+	if err == nil {
+		t.Error("Expected error, but got nil")
+	}
+}
+
+func TestServer_HandleResult_PublishResponseError(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	req := NewRequest(context.Background(), "method", "123", "params", "reply-channel")
+	reqErr := errors.New("request error")
+
+	expecetdResp, _ := newResponse(req.ID(), nil, reqErr)
+	expectedJSON, _ := expecetdResp.ToJSON()
+
+	expectedError := fmt.Errorf("failed to publish response")
+
+	mock.ExpectPublish("reply-channel", expectedJSON).SetErr(expectedError)
+
+	err := server.handleResult(req, nil, reqErr)
+	if !errors.Is(err, expectedError) {
+		t.Errorf("Expected error: %v, but got: %v", expectedError, err)
+	}
+}
+
+func TestServer_HandleResult_Success(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	req := NewRequest(context.Background(), "method", "123", "params", "reply-channel")
+	result := "result"
+
+	expecetdResp, _ := newResponse(req.ID(), result, nil)
+	expectedJSON, _ := expecetdResp.ToJSON()
+
+	mock.ExpectPublish("reply-channel", expectedJSON).SetVal(1)
+
+	err := server.handleResult(req, result, nil)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}

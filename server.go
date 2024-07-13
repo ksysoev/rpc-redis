@@ -234,6 +234,11 @@ func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Reque
 	return NewRequest(ctx, method, id, params, replyTo), cancel, nil
 }
 
+// handleResult handles the result of a request by creating a response, marshalling it to JSON,
+// and publishing it to Redis.
+// If the request does not require a reply, it returns nil.
+// If there is an error creating the response, marshalling it to JSON, or publishing it to Redis,
+// it returns an error with a descriptive message.
 func (s *Server) handleResult(req Request, result any, reqErr error) error {
 	if req.ReplyTo() == "" {
 		return nil
@@ -241,16 +246,16 @@ func (s *Server) handleResult(req Request, result any, reqErr error) error {
 
 	resp, err := newResponse(req.ID(), result, reqErr)
 	if err != nil {
-		return fmt.Errorf("error creating response: %v", err)
+		return fmt.Errorf("error creating response: %w", err)
 	}
 
 	respBytes, err := resp.ToJSON()
 	if err != nil {
-		return fmt.Errorf("error marshalling response: %v", err)
+		return fmt.Errorf("error marshalling response: %w", err)
 	}
 
 	if err := s.redis.Publish(req.Context(), req.ReplyTo(), respBytes).Err(); err != nil {
-		return fmt.Errorf("error publishing response: %v", err)
+		return fmt.Errorf("error publishing response: %w", err)
 	}
 
 	return nil
