@@ -159,24 +159,8 @@ func (s *Server) processMessage(msg redis.XMessage) {
 
 		result, reqErr := handler(req)
 
-		if req.ReplyTo() == "" {
-			return
-		}
-
-		resp, err := newResponse(req.ID(), result, reqErr)
-		if err != nil {
-			slog.Error(fmt.Sprintf("RPC error creating response for %s: %v", method, err))
-			return
-		}
-
-		respBytes, err := resp.ToJSON()
-		if err != nil {
-			slog.Error(fmt.Sprintf("RPC error marshalling response for %s: %v", method, err))
-			return
-		}
-
-		if err := s.redis.Publish(req.Context(), req.ReplyTo(), respBytes).Err(); err != nil {
-			slog.Error(fmt.Sprintf("RPC error publishing response for %s: %v", method, err))
+		if err := s.handleResult(req, result, reqErr); err != nil {
+			slog.Error(fmt.Sprintf("RPC error handling result for %s: %v", method, err))
 		}
 	}()
 }
@@ -248,4 +232,26 @@ func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Reque
 	}
 
 	return NewRequest(ctx, method, id, params, replyTo), cancel, nil
+}
+
+func (s *Server) handleResult(req Request, result any, reqErr error) error {
+	if req.ReplyTo() == "" {
+		return nil
+	}
+
+	resp, err := newResponse(req.ID(), result, reqErr)
+	if err != nil {
+		return fmt.Errorf("error creating response: %v", err)
+	}
+
+	respBytes, err := resp.ToJSON()
+	if err != nil {
+		return fmt.Errorf("error marshalling response: %v", err)
+	}
+
+	if err := s.redis.Publish(req.Context(), req.ReplyTo(), respBytes).Err(); err != nil {
+		return fmt.Errorf("error publishing response: %v", err)
+	}
+
+	return nil
 }
