@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/go-redis/redismock/v9"
 	"github.com/redis/go-redis/v9"
@@ -155,5 +156,126 @@ func TestServer_Run(t *testing.T) {
 	err := server.Run()
 	if err != nil && !errors.Is(err, expectedErr) {
 		t.Errorf("Unexpected error: %v", err)
+	}
+}
+func TestServer_AddHandler(t *testing.T) {
+	redisClient := redis.NewClient(&redis.Options{})
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	rpcName := "myRPC"
+	handler := func(req Request) (any, error) {
+		return nil, nil
+	}
+
+	server.AddHandler(rpcName, handler)
+
+	// Verify that the handler was added successfully
+	if _, ok := server.getHandler(rpcName); !ok {
+		t.Errorf("Expected handler to be added for RPC: %s", rpcName)
+	}
+
+	// Verify that adding the same handler again panics
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected panic when adding duplicate handler for RPC: %s", rpcName)
+		}
+	}()
+
+	server.AddHandler(rpcName, handler)
+}
+func TestGetField_ExistingField(t *testing.T) {
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"field1": "value1",
+			"field2": "value2",
+		},
+	}
+
+	field := "field1"
+	expected := "value1"
+	actual := getField(msg, field)
+
+	if actual != expected {
+		t.Errorf("Expected field value %s, but got %s", expected, actual)
+	}
+}
+
+func TestGetField_NonExistingField(t *testing.T) {
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"field1": "value1",
+			"field2": "value2",
+		},
+	}
+
+	field := "field3"
+	expected := ""
+	actual := getField(msg, field)
+
+	if actual != expected {
+		t.Errorf("Expected empty field value, but got %s", actual)
+	}
+}
+
+func TestGetField_NonStringFieldValue(t *testing.T) {
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"field1": 123,
+			"field2": true,
+		},
+	}
+
+	field := "field1"
+	expected := ""
+	actual := getField(msg, field)
+
+	if actual != expected {
+		t.Errorf("Expected empty field value, but got %s", actual)
+	}
+}
+func TestServer_Close(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+
+	xReadArgs := &redis.XReadGroupArgs{
+		Group:    group,
+		Consumer: consumer,
+		Streams:  []string{stream, ">"},
+		Block:    DefaultBlockInterval,
+		Count:    DefaultBatchSize,
+		NoAck:    false,
+	}
+
+	mock.ExpectXGroupCreateMkStream(stream, group, "$").SetVal("OK")
+	mock.ExpectXGroupCreateConsumer(stream, group, consumer).SetVal(1)
+	mock.ExpectXReadGroup(xReadArgs).SetErr(redis.Nil)
+
+	server := NewServer(redisClient, stream, group, consumer)
+
+	done := make(chan struct{})
+	go func() {
+		err := server.Run()
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		close(done)
+	}()
+
+	// Close the server
+	server.Close()
+
+	// Verify that the server has stopped
+	select {
+	case <-done:
+		// The context is cancelled, which means the server has stopped
+	case <-time.After(1 * time.Second):
+		t.Error("Server did not stop within the expected time")
 	}
 }
