@@ -27,17 +27,17 @@ type Request interface {
 type request struct {
 	ctx     context.Context
 	method  string
-	req_id  string
+	id      string
 	params  string
 	replyTo string
 }
 
 // NewRequest creates a new Request with the provided parameters.
 // It returns a Request interface.
-func NewRequest(ctx context.Context, method, req_id, params, replyTo string) Request {
+func NewRequest(ctx context.Context, method, id, params, replyTo string) Request {
 	return &request{
 		ctx:     ctx,
-		req_id:  req_id,
+		id:      id,
 		params:  params,
 		method:  method,
 		replyTo: replyTo,
@@ -45,27 +45,27 @@ func NewRequest(ctx context.Context, method, req_id, params, replyTo string) Req
 }
 
 // Context returns the context associated with the request.
-func (r request) Context() context.Context {
+func (r *request) Context() context.Context {
 	return r.ctx
 }
 
 // ID returns the unique identifier of the request.
-func (r request) ID() string {
-	return r.req_id
+func (r *request) ID() string {
+	return r.id
 }
 
 // ParseParams parses the JSON-encoded parameters of the request into the provided value.
 // The value must be a pointer to the desired type.
-func (r request) ParseParams(v any) error {
+func (r *request) ParseParams(v any) error {
 	return json.Unmarshal([]byte(r.params), v)
 }
 
 // Method returns the HTTP method of the request.
-func (r request) Method() string {
+func (r *request) Method() string {
 	return r.method
 }
 
 // ReplyTo returns the replyTo field of the request.
-func (r request) ReplyTo() string {
+func (r *request) ReplyTo() string {
 	return r.replyTo
 }

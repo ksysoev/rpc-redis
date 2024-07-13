@@ -47,9 +47,8 @@ func TestServer_InitReader(t *testing.T) {
 
 	// Expect XGroupCreateConsumer to be called with the correct arguments
 	mock.ExpectXGroupCreateConsumer(stream, group, consumer).SetVal(1)
-	err := server.initReader()
 
-	if err != nil {
+	if err := server.initReader(); err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 

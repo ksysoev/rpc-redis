@@ -14,25 +14,25 @@ import (
 )
 
 type Client struct {
-	redis    *redis.Client
-	id       string
 	ctx      context.Context
+	redis    *redis.Client
 	cancel   context.CancelFunc
 	wg       *sync.WaitGroup
-	channel  string
 	requests map[string]chan<- *Response
 	lock     *sync.RWMutex
 	counter  *atomic.Uint64
+	id       string
+	channel  string
 }
 
 // NewClient creates a new instance of the Client struct.
 // It takes a Redis client and a channel name as parameters.
 // It returns a pointer to the newly created Client.
-func NewClient(redis *redis.Client, channel string) *Client {
+func NewClient(redisClient *redis.Client, channel string) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
-		redis:    redis,
+		redis:    redisClient,
 		id:       uuid.New().String(),
 		ctx:      ctx,
 		cancel:   cancel,

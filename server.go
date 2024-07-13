@@ -23,26 +23,26 @@ type Handler func(req Request) (any, error)
 type token struct{}
 
 type Server struct {
-	stream       string
-	group        string
-	consumer     string
+	ctx          context.Context
 	redis        *redis.Client
 	handlers     map[string]Handler
 	handlersLock *sync.RWMutex
-	ctx          context.Context
 	cancel       context.CancelFunc
 	sem          chan struct{}
 	wg           *sync.WaitGroup
+	stream       string
+	group        string
+	consumer     string
 }
 
 // NewServer creates a new instance of the Server struct.
 // It takes a Redis client, stream name, consumer group name, and consumer name as parameters.
 // It returns a pointer to the newly created Server instance.
-func NewServer(redis *redis.Client, stream, group, consumer string) *Server {
+func NewServer(redisClient *redis.Client, stream, group, consumer string) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Server{
-		redis:        redis,
+		redis:        redisClient,
 		stream:       stream,
 		group:        group,
 		handlers:     make(map[string]Handler),
@@ -143,6 +143,7 @@ func (s *Server) processMessage(msg redis.XMessage) {
 
 	s.sem <- token{}
 	s.wg.Add(1)
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -154,6 +155,7 @@ func (s *Server) processMessage(msg redis.XMessage) {
 		}()
 
 		ctx := s.ctx
+
 		if deadline != "" {
 			epochTime, err := strconv.ParseInt(deadline, 10, 64)
 			if err != nil {
@@ -161,11 +163,16 @@ func (s *Server) processMessage(msg redis.XMessage) {
 				return
 			}
 
+			var cancel context.CancelFunc
+
 			deadlineTime := time.Unix(epochTime, 0)
-			ctx, _ = context.WithDeadline(ctx, deadlineTime)
+			ctx, cancel = context.WithDeadline(ctx, deadlineTime)
+
+			defer cancel()
 		}
 
 		result, reqErr := handler(NewRequest(s.ctx, method, id, params, replyTo))
+
 		if replyTo == "" {
 			return
 		}
@@ -228,6 +235,7 @@ func (s *Server) getHandler(rpcName string) (Handler, bool) {
 	defer s.handlersLock.RUnlock()
 
 	handler, ok := s.handlers[rpcName]
+
 	return handler, ok
 }
 
