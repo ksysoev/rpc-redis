@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -277,4 +278,91 @@ func TestServer_Close(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Error("Server did not stop within the expected time")
 	}
+}
+func TestParseMessage_ValidMessage(t *testing.T) {
+	ctx := context.Background()
+
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "add",
+			"id":       "123",
+			"params":   `{"a": 1, "b": 2}`,
+			"deadline": "1672531200",
+			"reply_to": "response-channel",
+		},
+	}
+
+	req, cancel, err := parseMessage(ctx, "add", msg)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if req.Method() != "add" {
+		t.Errorf("Expected method 'add', but got '%s'", req.Method())
+	}
+
+	if req.ID() != "123" {
+		t.Errorf("Expected ID '123', but got '%s'", req.ID())
+	}
+
+	if req.ReplyTo() != "response-channel" {
+		t.Errorf("Expected replyTo 'response-channel', but got '%s'", req.ReplyTo())
+	}
+
+	deadline, ok := req.Context().Deadline()
+	if !ok {
+		t.Error("Expected deadline to be set")
+	}
+
+	expectedDeadline := time.Unix(1672531200, 0)
+	if deadline != expectedDeadline {
+		t.Errorf("Expected deadline '%s', but got '%s'", expectedDeadline, deadline)
+	}
+
+	cancel()
+}
+
+func TestParseMessage_InvalidDeadline(t *testing.T) {
+	ctx := context.Background()
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "subtract",
+			"id":       "456",
+			"params":   `{"a": 3, "b": 4}`,
+			"deadline": "invalid",
+			"reply_to": "response-channel",
+		},
+	}
+
+	_, _, err := parseMessage(ctx, "subtract", msg)
+
+	if err == nil {
+		t.Error("Expected error, but got nil")
+	}
+}
+
+func TestParseMessage_NoDeadline(t *testing.T) {
+	ctx := context.Background()
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "multiply",
+			"id":       "789",
+			"params":   `{"a": 5, "b": 6}`,
+			"reply_to": "response-channel",
+		},
+	}
+
+	req, cancel, err := parseMessage(ctx, "multiply", msg)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	_, ok := req.Context().Deadline()
+	if ok {
+		t.Error("Expected no deadline to be set")
+	}
+
+	cancel()
 }

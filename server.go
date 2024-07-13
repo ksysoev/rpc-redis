@@ -136,11 +136,6 @@ func (s *Server) processMessage(msg redis.XMessage) {
 		return
 	}
 
-	id := getField(msg, "id")
-	params := getField(msg, "params")
-	deadline := getField(msg, "deadline")
-	replyTo := getField(msg, "reply_to")
-
 	s.sem <- token{}
 	s.wg.Add(1)
 
@@ -154,26 +149,18 @@ func (s *Server) processMessage(msg redis.XMessage) {
 			s.wg.Done()
 		}()
 
-		ctx := s.ctx
+		req, cancel, err := parseMessage(s.ctx, method, msg)
 
-		if deadline != "" {
-			epochTime, err := strconv.ParseInt(deadline, 10, 64)
-			if err != nil {
-				slog.Error(fmt.Sprintf("RPC invalid deadline for %s: %v", method, err))
-				return
-			}
-
-			var cancel context.CancelFunc
-
-			deadlineTime := time.Unix(epochTime, 0)
-			ctx, cancel = context.WithDeadline(ctx, deadlineTime)
-
-			defer cancel()
+		if err != nil {
+			slog.Error(fmt.Sprintf("RPC error parsing message for %s: %v", method, err))
+			return
 		}
 
-		result, reqErr := handler(NewRequest(s.ctx, method, id, params, replyTo))
+		defer cancel()
 
-		if replyTo == "" {
+		result, reqErr := handler(req)
+
+		if req.ReplyTo() == "" {
 			return
 		}
 
@@ -186,12 +173,12 @@ func (s *Server) processMessage(msg redis.XMessage) {
 		var resp *Response
 		if err != nil {
 			resp = &Response{
-				ID:    id,
+				ID:    req.ID(),
 				Error: reqErr.Error(),
 			}
 		} else {
 			resp = &Response{
-				ID:     id,
+				ID:     req.ID(),
 				Result: encodedResult,
 			}
 		}
@@ -202,7 +189,7 @@ func (s *Server) processMessage(msg redis.XMessage) {
 			return
 		}
 
-		if err := s.redis.Publish(ctx, replyTo, jsonResp).Err(); err != nil {
+		if err := s.redis.Publish(req.Context(), req.ReplyTo(), jsonResp).Err(); err != nil {
 			slog.Error(fmt.Sprintf("RPC error publishing response for %s: %v", method, err))
 		}
 	}()
@@ -253,4 +240,26 @@ func getField(msg redis.XMessage, field string) string {
 	}
 
 	return val
+}
+
+// parseMessage parses the given Redis XMessage and returns a Request, context.CancelFunc, and error.
+// It extracts the necessary fields from the message and creates a context with optional deadline.
+func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Request, context.CancelFunc, error) {
+	id := getField(msg, "id")
+	params := getField(msg, "params")
+	deadline := getField(msg, "deadline")
+	replyTo := getField(msg, "reply_to")
+	ctx, cancel := context.WithCancel(ctx)
+
+	if deadline != "" {
+		epochTime, err := strconv.ParseInt(deadline, 10, 64)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error parsing deadline: %w", err)
+		}
+
+		deadlineTime := time.Unix(epochTime, 0)
+		ctx, cancel = context.WithDeadline(ctx, deadlineTime)
+	}
+
+	return NewRequest(ctx, method, id, params, replyTo), cancel, nil
 }
