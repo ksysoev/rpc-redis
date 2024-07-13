@@ -1,4 +1,4 @@
-package redisrpc
+package rpc
 
 import "encoding/json"
 

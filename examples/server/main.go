@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	redisrpc "github.com/ksysoev/redis-rpc"
+	"github.com/ksysoev/rpc-redis"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -17,9 +17,9 @@ func main() {
 		Addr: "localhost:6379",
 	})
 
-	rpcServer := redisrpc.NewServer(redisClient, "echo.EchoService", "echo-group", "echo-consumer")
+	rpcServer := rpc.NewServer(redisClient, "echo.EchoService", "echo-group", "echo-consumer")
 
-	rpcServer.AddHandler("Echo", func(req redisrpc.Request) (any, error) {
+	rpcServer.AddHandler("Echo", func(req rpc.Request) (any, error) {
 		var echoReq EchoRequest
 
 		err := req.ParseParams(&echoReq)

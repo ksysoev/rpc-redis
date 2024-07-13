@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	redisrpc "github.com/ksysoev/redis-rpc"
+	"github.com/ksysoev/rpc-redis"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -19,7 +19,7 @@ func main() {
 	})
 	defer redisClient.Close()
 
-	rpcClient := redisrpc.NewClient(redisClient, "echo.EchoService")
+	rpcClient := rpc.NewClient(redisClient, "echo.EchoService")
 	defer rpcClient.Close()
 
 	ctx := context.Background()
