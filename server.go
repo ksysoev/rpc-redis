@@ -80,7 +80,7 @@ func (s *Server) Run() error {
 		NoAck:    false,
 	}
 
-	for {
+	for s.ctx.Err() == nil {
 		streams, err := s.redis.XReadGroup(s.ctx, readArgs).Result()
 
 		switch {
@@ -96,6 +96,8 @@ func (s *Server) Run() error {
 			}
 		}
 	}
+
+	return nil
 }
 
 // initReader initializes the reader by creating a stream and a consumer group.
