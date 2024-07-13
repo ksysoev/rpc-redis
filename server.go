@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -164,32 +163,19 @@ func (s *Server) processMessage(msg redis.XMessage) {
 			return
 		}
 
-		encodedResult, err := json.Marshal(result)
+		resp, err := newResponse(req.ID(), result, reqErr)
 		if err != nil {
-			slog.Error(fmt.Sprintf("RPC error marshalling result for %s: %v", method, err))
+			slog.Error(fmt.Sprintf("RPC error creating response for %s: %v", method, err))
 			return
 		}
 
-		var resp *Response
-		if err != nil {
-			resp = &Response{
-				ID:    req.ID(),
-				Error: reqErr.Error(),
-			}
-		} else {
-			resp = &Response{
-				ID:     req.ID(),
-				Result: encodedResult,
-			}
-		}
-
-		jsonResp, err := json.Marshal(resp)
+		respBytes, err := resp.ToJSON()
 		if err != nil {
 			slog.Error(fmt.Sprintf("RPC error marshalling response for %s: %v", method, err))
 			return
 		}
 
-		if err := s.redis.Publish(req.Context(), req.ReplyTo(), jsonResp).Err(); err != nil {
+		if err := s.redis.Publish(req.Context(), req.ReplyTo(), respBytes).Err(); err != nil {
 			slog.Error(fmt.Sprintf("RPC error publishing response for %s: %v", method, err))
 		}
 	}()
