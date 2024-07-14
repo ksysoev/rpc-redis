@@ -21,12 +21,13 @@ func TestNewResponse(t *testing.T) {
 
 	err = nil
 	response, err = newResponse(id, result, err)
+
 	if err != nil {
-		t.Errorf("unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if response == nil {
-		t.Errorf("expected non-nil response, got nil")
+		t.Fatalf("expected non-nil response, got nil")
 	}
 
 	if response.ID != id {
