@@ -1,5 +1,8 @@
 # RPC Redis
 
+[![RPC Redis](https://github.com/ksysoev/rpc-redis/actions/workflows/main.yml/badge.svg)](https://github.com/ksysoev/rpc-redis/actions/workflows/main.yml)
+[![codecov](https://codecov.io/gh/ksysoev/rpc-redis/graph/badge.svg?token=Q1G80IX95U)](https://codecov.io/gh/ksysoev/rpc-redis)
+
 `rpc-redis` is a Go package that implements a JSON-RPC-like protocol over Redis Streams and channels. This package allows you to build scalable and efficient RPC servers and clients using Redis as the underlying transport mechanism.
 
 ## Features
