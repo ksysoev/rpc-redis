@@ -465,3 +465,166 @@ func TestServer_HandleResult_Success(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
+
+func TestServer_ProcessMessage_ValidMessageWithExistingHandler(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+	server := NewServer(redisClient, stream, group, consumer)
+
+	mock.ExpectPublish("response-channel", []byte(`{"id":"123","result":"test data"}`)).SetVal(1)
+
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "add",
+			"id":       "123",
+			"params":   `{"a": 1, "b": 2}`,
+			"reply_to": "response-channel",
+		},
+	}
+
+	isCalled := false
+	handler := func(req Request) (any, error) {
+		isCalled = true
+		return "test data", nil
+	}
+	server.AddHandler("add", handler)
+
+	server.processMessage(msg)
+
+	server.Close()
+
+	if !isCalled {
+		t.Error("Expected handler to be called")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+func TestServer_ProcessMessage_ValidMessageWithNonExistingHandler(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+	server := NewServer(redisClient, stream, group, consumer)
+
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "subtract",
+			"id":       "456",
+			"params":   `{"a": 3, "b": 4}`,
+			"reply_to": "response-channel",
+		},
+	}
+
+	server.processMessage(msg)
+
+	server.Close()
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+func TestServer_ProcessMessage_InvalidMessageWithExistingHandler(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "mytream"
+	group := "myGroup"
+	consumer := "myConsumer"
+	server := NewServer(redisClient, stream, group, consumer)
+
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "multiply",
+			"id":       "789",
+			"params":   `{"a": 5, "b": 6}`,
+			"deadline": "invalid",
+			"reply_to": "response-channel",
+		},
+	}
+
+	isCalled := false
+	handler := func(req Request) (any, error) {
+		isCalled = true
+		return nil, nil
+	}
+	server.AddHandler("multiply", handler)
+
+	server.processMessage(msg)
+
+	server.Close()
+
+	if isCalled {
+		t.Error("Expected handler not to be called")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+func TestServer_ProcessMessage_InvalidMessageWithNonExistingHandler(t *testing.T) {
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+	server := NewServer(redisClient, stream, group, consumer)
+
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "divide",
+			"id":       "987",
+			"params":   `{"a": 8, "b": 9}`,
+			"deadline": "invalid",
+			"reply_to": "response-channel",
+		},
+	}
+
+	server.processMessage(msg)
+
+	server.Close()
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
+
+func TestServer_ProcessMessage_Panic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Error("Expected no panic")
+		}
+	}()
+
+	redisClient, mock := redismock.NewClientMock()
+	stream := "myStream"
+	group := "myGroup"
+	consumer := "myConsumer"
+	server := NewServer(redisClient, stream, group, consumer)
+
+	msg := redis.XMessage{
+		Values: map[string]interface{}{
+			"method":   "panic",
+			"id":       "987",
+			"params":   `{"a": 8, "b": 9}`,
+			"deadline": "1672531200",
+			"reply_to": "response-channel",
+		},
+	}
+
+	handler := func(req Request) (any, error) {
+		panic("test panic")
+	}
+	server.AddHandler("panic", handler)
+
+	server.processMessage(msg)
+
+	server.Close()
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Unfulfilled expectations: %v", err)
+	}
+}
