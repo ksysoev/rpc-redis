@@ -13,9 +13,14 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type redisClient interface {
+	sendRequest(ctx context.Context, stream string, msg any) error
+	subscribeOnResponses(ctx context.Context, channel string) (<-chan *redis.Message, Closer)
+}
+
 type Client struct {
 	ctx      context.Context
-	redis    *redis.Client
+	redis    redisClient
 	cancel   context.CancelFunc
 	wg       *sync.WaitGroup
 	requests map[string]chan<- *Response
@@ -31,8 +36,10 @@ type Client struct {
 func NewClient(redisClient *redis.Client, channel string) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	redisWrap := newRedisWrapper(redisClient)
+
 	client := &Client{
-		redis:    redisClient,
+		redis:    redisWrap,
 		id:       uuid.New().String(),
 		ctx:      ctx,
 		cancel:   cancel,
@@ -78,10 +85,7 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 		"reply_to": c.id,
 	}
 
-	err = c.redis.XAdd(ctx, &redis.XAddArgs{
-		Stream: c.channel,
-		Values: msg,
-	}).Err()
+	err = c.redis.sendRequest(ctx, c.channel, msg)
 
 	if err != nil {
 		return nil, fmt.Errorf("error sending request: %w", err)
@@ -112,16 +116,14 @@ func (c *Client) Close() {
 // If no response channel is found, it continues to the next message.
 // The function runs until the context is canceled or an error occurs.
 func (c *Client) handleResponses() {
-	pubsub := c.redis.Subscribe(c.ctx, c.id)
-	defer pubsub.Close()
-
-	pubsubChan := pubsub.Channel()
+	ch, sub := c.redis.subscribeOnResponses(c.ctx, c.id)
+	defer sub.Close()
 
 	for {
 		select {
 		case <-c.ctx.Done():
 			return
-		case msg := <-pubsubChan:
+		case msg := <-ch:
 			resp := &Response{}
 
 			err := json.Unmarshal([]byte(msg.Payload), resp)
