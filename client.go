@@ -73,11 +73,11 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	respChan := c.addRequest(id)
 	defer c.removeRequest(id)
 
-	msg := map[string]interface{}{
-		"id":       id,
-		"method":   method,
-		"params":   string(paramsBytes),
-		"reply_to": c.id,
+	msg := []string{
+		"id", id,
+		"method", method,
+		"params", string(paramsBytes),
+		"reply_to", c.id,
 	}
 
 	err = c.redis.XAdd(ctx, &redis.XAddArgs{

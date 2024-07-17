@@ -67,11 +67,11 @@ func TestCall_ClientClosed(t *testing.T) {
 
 	clientMock.ExpectXAdd(&redis.XAddArgs{
 		Stream: "test-channel",
-		Values: map[string]interface{}{
-			"id":       id,
-			"method":   method,
-			"params":   fmt.Sprintf("%q", params),
-			"reply_to": client.id,
+		Values: []string{
+			"id", id,
+			"method", method,
+			"params", fmt.Sprintf("%q", params),
+			"reply_to", client.id,
 		},
 	}).SetVal("OK")
 
@@ -86,9 +86,10 @@ func TestCall_ClientClosed(t *testing.T) {
 		close(done)
 	}()
 
-	time.Sleep(time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	client.Close()
 
+	<-done
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -108,11 +109,11 @@ func TestCall_Timeout(t *testing.T) {
 
 	clientMock.ExpectXAdd(&redis.XAddArgs{
 		Stream: "test-channel",
-		Values: map[string]interface{}{
-			"id":       id,
-			"method":   method,
-			"params":   fmt.Sprintf("%q", params),
-			"reply_to": client.id,
+		Values: []string{
+			"id", id,
+			"method", method,
+			"params", fmt.Sprintf("%q", params),
+			"reply_to", client.id,
 		},
 	}).SetVal("OK")
 
