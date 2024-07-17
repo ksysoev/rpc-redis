@@ -80,6 +80,10 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 		"reply_to", c.id,
 	}
 
+	if deadline, ok := ctx.Deadline(); ok {
+		msg = append(msg, "deadline", fmt.Sprintf("%d", deadline.Unix()))
+	}
+
 	err = c.redis.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.channel,
 		Values: msg,

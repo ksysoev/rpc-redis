@@ -107,6 +107,9 @@ func TestCall_Timeout(t *testing.T) {
 	method := "test-method"
 	params := "test-params"
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
 	clientMock.ExpectXAdd(&redis.XAddArgs{
 		Stream: "test-channel",
 		Values: []string{
@@ -114,17 +117,13 @@ func TestCall_Timeout(t *testing.T) {
 			"method", method,
 			"params", fmt.Sprintf("%q", params),
 			"reply_to", client.id,
+			"deadline", fmt.Sprintf("%d", time.Now().Add(time.Millisecond).Unix()),
 		},
 	}).SetVal("OK")
 
 	done := make(chan struct{})
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
-		defer cancel()
-
-		_, err := client.Call(ctx, method, params)
-
-		if err != context.DeadlineExceeded {
+		if _, err := client.Call(ctx, method, params); err != context.DeadlineExceeded {
 			t.Errorf("Expected error to be ErrClientClosed but got %v", err)
 		}
 
