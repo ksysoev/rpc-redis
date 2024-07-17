@@ -13,6 +13,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var ErrClientClosed = errors.New("client closed")
+
 type Client struct {
 	ctx      context.Context
 	redis    *redis.Client
@@ -74,7 +76,7 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	msg := map[string]interface{}{
 		"id":       id,
 		"method":   method,
-		"params":   paramsBytes,
+		"params":   string(paramsBytes),
 		"reply_to": c.id,
 	}
 
@@ -90,6 +92,8 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-c.ctx.Done():
+		return nil, ErrClientClosed
 	case resp := <-respChan:
 		if resp.Error != "" {
 			return nil, errors.New(resp.Error)

@@ -1,9 +1,13 @@
 package rpc
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/go-redis/redismock/v9"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestNewClient(t *testing.T) {
@@ -50,5 +54,85 @@ func TestRemoveRequest(t *testing.T) {
 	// Verify that the request is removed from the requests map
 	if _, ok := client.requests[id]; ok {
 		t.Errorf("Expected request to be removed from the requests map")
+	}
+}
+
+func TestCall_ClientClosed(t *testing.T) {
+	redisClient, clientMock := redismock.NewClientMock()
+	client := NewClient(redisClient, "test-channel")
+
+	id := "1"
+	method := "test-method"
+	params := "test-params"
+
+	clientMock.ExpectXAdd(&redis.XAddArgs{
+		Stream: "test-channel",
+		Values: map[string]interface{}{
+			"id":       id,
+			"method":   method,
+			"params":   fmt.Sprintf("%q", params),
+			"reply_to": client.id,
+		},
+	}).SetVal("OK")
+
+	done := make(chan struct{})
+	go func() {
+		_, err := client.Call(context.Background(), method, params)
+
+		if err != ErrClientClosed {
+			t.Errorf("Expected error to be ErrClientClosed but got %v", err)
+		}
+
+		close(done)
+	}()
+
+	time.Sleep(time.Millisecond)
+	client.Close()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Errorf("Expected call to return")
+	}
+}
+
+func TestCall_Timeout(t *testing.T) {
+	redisClient, clientMock := redismock.NewClientMock()
+	client := NewClient(redisClient, "test-channel")
+
+	defer client.Close()
+
+	id := "1"
+	method := "test-method"
+	params := "test-params"
+
+	clientMock.ExpectXAdd(&redis.XAddArgs{
+		Stream: "test-channel",
+		Values: map[string]interface{}{
+			"id":       id,
+			"method":   method,
+			"params":   fmt.Sprintf("%q", params),
+			"reply_to": client.id,
+		},
+	}).SetVal("OK")
+
+	done := make(chan struct{})
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		defer cancel()
+
+		_, err := client.Call(ctx, method, params)
+
+		if err != context.DeadlineExceeded {
+			t.Errorf("Expected error to be ErrClientClosed but got %v", err)
+		}
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Errorf("Expected call to return")
 	}
 }
