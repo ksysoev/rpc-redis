@@ -101,6 +101,7 @@ func TestSetStash(t *testing.T) {
 
 func TestSetStash_NilContext(t *testing.T) {
 	var ctx context.Context
+
 	stash := "test stash"
 
 	_, err := SetStash(ctx, stash)
