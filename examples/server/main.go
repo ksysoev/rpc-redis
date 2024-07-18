@@ -12,6 +12,10 @@ type EchoRequest struct {
 	Value string `json:"value"`
 }
 
+type Stash struct {
+	Value string `json:"value"`
+}
+
 func main() {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
@@ -28,6 +32,15 @@ func main() {
 		}
 
 		slog.Info("Received request: " + echoReq.Value)
+
+		var stash Stash
+		err = rpc.ParseStash(req.Context(), &stash)
+		if err != nil {
+			slog.Error("Error parsing stash: " + err.Error())
+			return nil, err
+		}
+
+		slog.Info("Stash value: " + stash.Value)
 
 		return &echoReq, nil
 	})

@@ -30,7 +30,7 @@ func SetStash(ctx context.Context, stash any) (context.Context, error) {
 		return nil, fmt.Errorf("error marshalling stash: %w", err)
 	}
 
-	ctx = context.WithValue(ctx, stashKeyValue, stashStr)
+	ctx = context.WithValue(ctx, stashKeyValue, string(stashStr))
 
 	return ctx, nil
 }
@@ -38,41 +38,37 @@ func SetStash(ctx context.Context, stash any) (context.Context, error) {
 // ParseStash parses the stash value from the context and unmarshals it into the provided value.
 // It returns an error if the stash value is not found in the context or if it has an unexpected type.
 func ParseStash(ctx context.Context, v any) error {
-	stash, ok := ctx.Value(stashKeyValue).(any)
-	if !ok {
+	stash := ctx.Value(stashKeyValue)
+	if stash == nil {
 		return ErrNoStash
 	}
 
-	stashStr, ok := stash.([]byte)
+	stashStr, ok := stash.(string)
 	if !ok {
 		return ErrUnexpectedStashType
 	}
 
-	return json.Unmarshal(stashStr, v)
+	return json.Unmarshal([]byte(stashStr), v)
 }
 
-func getStash(ctx context.Context) ([]byte, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
+// getStash retrieves the serialized stash from the provided context.
+// It returns the serialized stash as a byte slice and an error, if any.
+func getStash(ctx context.Context) string {
 	stash := ctx.Value(stashKeyValue)
 	if stash == nil {
-		return nil, ErrNoStash
+		return ""
 	}
 
-	serialized, ok := stash.([]byte)
+	serialized, ok := stash.(string)
 	if !ok {
-		return nil, ErrUnexpectedStashType
+		panic(ErrUnexpectedStashType)
 	}
 
-	return serialized, nil
+	return serialized
 }
 
-func putStash(ctx context.Context, stash []byte) context.Context {
-	if ctx == nil {
-		panic(ErrNilContext)
-	}
-
+// putStash puts the given stash into the context and returns the updated context.
+// If the provided context is nil, it panics with ErrNilContext.
+func putStash(ctx context.Context, stash string) context.Context {
 	return context.WithValue(ctx, stashKeyValue, stash)
 }

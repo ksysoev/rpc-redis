@@ -13,6 +13,10 @@ type EchoRequest struct {
 	Value string `json:"value"`
 }
 
+type Stash struct {
+	Value string `json:"value"`
+}
+
 func main() {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
@@ -23,6 +27,13 @@ func main() {
 	defer rpcClient.Close()
 
 	ctx := context.Background()
+
+	ctx, err := rpc.SetStash(ctx, &Stash{Value: "Hello, stash!"})
+	if err != nil {
+		slog.Error("Error setting stash: " + err.Error())
+		return
+	}
+
 	resp, err := rpcClient.Call(ctx, "Echo", &EchoRequest{Value: "Hello, world!"})
 
 	if err != nil {
