@@ -33,10 +33,13 @@ rpcServer := rpc.NewServer(redisClient, "echo.EchoService", "echo-group", "echo-
 
 rpcServer.AddHandler("Echo", func(req rpc.Request) (any, error) {
     var echoReq EchoRequest
-
-    err := req.ParseParams(&echoReq)
-    if err != nil {
+    if err := req.ParseParams(&echoReq); err != nil {
         return nil, fmt.Errorf("error parsing request: %v", err)
+    }
+
+    var stash Stash
+    if err = rpc.ParseStash(req.Context(), &stash); err != nil {
+        return nil, fmt.Errorf("error parsing stash: %v", err)
     }
 
     slog.Info("Received request: " + echoReq.Value)
@@ -66,6 +69,12 @@ rpcClient := rpc.NewClient(redisClient, "echo.EchoService")
 defer rpcClient.Close()
 
 ctx := context.Background()
+ctx, err := rpc.SetStash(ctx, &Stash{Value: "Hello, stash!"})
+if err != nil {
+	slog.Error("Error setting stash: " + err.Error())
+	return
+}
+
 resp, err := rpcClient.Call(ctx, "Echo", &EchoRequest{Value: "Hello, world!"})
 
 if err != nil {
