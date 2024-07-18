@@ -64,6 +64,7 @@ func TestCall_ClientClosed(t *testing.T) {
 	id := "1"
 	method := "test-method"
 	params := "test-params"
+	ctx, _ := SetStash(context.Background(), "test-stash")
 
 	clientMock.ExpectXAdd(&redis.XAddArgs{
 		Stream: "test-channel",
@@ -72,12 +73,13 @@ func TestCall_ClientClosed(t *testing.T) {
 			"method", method,
 			"params", fmt.Sprintf("%q", params),
 			"reply_to", client.id,
+			"stash", fmt.Sprintf("%q", "test-stash"),
 		},
 	}).SetVal("OK")
 
 	done := make(chan struct{})
 	go func() {
-		_, err := client.Call(context.Background(), method, params)
+		_, err := client.Call(ctx, method, params)
 
 		if err != ErrClientClosed {
 			t.Errorf("Expected error to be ErrClientClosed but got %v", err)

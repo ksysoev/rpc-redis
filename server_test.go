@@ -481,6 +481,7 @@ func TestServer_ProcessMessage_ValidMessageWithExistingHandler(t *testing.T) {
 			"id":       "123",
 			"params":   `{"a": 1, "b": 2}`,
 			"reply_to": "response-channel",
+			"stash":    "\"test stash\"",
 		},
 	}
 
