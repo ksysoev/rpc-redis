@@ -84,6 +84,10 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 		msg = append(msg, "deadline", fmt.Sprintf("%d", deadline.Unix()))
 	}
 
+	if stash := getStash(ctx); stash != "" {
+		msg = append(msg, "stash", stash)
+	}
+
 	err = c.redis.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.channel,
 		Values: msg,

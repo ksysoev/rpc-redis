@@ -215,13 +215,9 @@ func getField(msg redis.XMessage, field string) string {
 // parseMessage parses the given Redis XMessage and returns a Request, context.CancelFunc, and error.
 // It extracts the necessary fields from the message and creates a context with optional deadline.
 func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Request, context.CancelFunc, error) {
-	id := getField(msg, "id")
-	params := getField(msg, "params")
-	deadline := getField(msg, "deadline")
-	replyTo := getField(msg, "reply_to")
 	ctx, cancel := context.WithCancel(ctx)
 
-	if deadline != "" {
+	if deadline := getField(msg, "deadline"); deadline != "" {
 		epochTime, err := strconv.ParseInt(deadline, 10, 64)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error parsing deadline: %w", err)
@@ -230,6 +226,14 @@ func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Reque
 		deadlineTime := time.Unix(epochTime, 0)
 		ctx, cancel = context.WithDeadline(ctx, deadlineTime)
 	}
+
+	if stash := getField(msg, "stash"); stash != "" {
+		ctx = putStash(ctx, stash)
+	}
+
+	id := getField(msg, "id")
+	params := getField(msg, "params")
+	replyTo := getField(msg, "reply_to")
 
 	return NewRequest(ctx, method, id, params, replyTo), cancel, nil
 }
