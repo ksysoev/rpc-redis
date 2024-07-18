@@ -48,7 +48,11 @@ func ParseStash(ctx context.Context, v any) error {
 		return ErrUnexpectedStashType
 	}
 
-	return json.Unmarshal([]byte(stashStr), v)
+	if err := json.Unmarshal([]byte(stashStr), v); err != nil {
+		return fmt.Errorf("error unmarshalling stash: %w", err)
+	}
+
+	return nil
 }
 
 // getStash retrieves the serialized stash from the provided context.
