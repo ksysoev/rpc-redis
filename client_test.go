@@ -138,3 +138,69 @@ func TestCall_Timeout(t *testing.T) {
 		t.Errorf("Expected call to return")
 	}
 }
+func TestProcessMessage(t *testing.T) {
+	client := NewClient(nil, "test-channel")
+	defer client.Close()
+
+	respChan := make(chan *Response)
+	client.requests["test-id"] = respChan
+
+	msg := &redis.Message{
+		Payload: `{"ID": "test-id", "Result": "test-result"}`,
+	}
+
+	go func() {
+		client.processMessage(msg)
+	}()
+
+	select {
+	case resp := <-respChan:
+		if resp.ID != "test-id" {
+			t.Errorf("Expected response ID to be 'test-id', but got '%s'", resp.ID)
+		}
+
+		var res string
+		if err := resp.ParseResut(&res); err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+
+		if res != "test-result" {
+			t.Errorf("Expected response Result to be 'test-result', but got '%s'", resp.Result)
+		}
+	case <-time.After(time.Second):
+		t.Errorf("Expected response to be received on the channel")
+	}
+}
+
+func TestProcessMessage_InvalidPayload(t *testing.T) {
+	client := NewClient(nil, "test-channel")
+	defer client.Close()
+
+	respChan := make(chan *Response)
+	client.requests["test-id"] = respChan
+
+	msg := &redis.Message{
+		Payload: "invalid-json",
+	}
+
+	go func() {
+		client.processMessage(msg)
+	}()
+
+	select {
+	case <-respChan:
+		t.Errorf("Expected no response to be received on the channel")
+	case <-time.After(10 * time.Millisecond): // No response should be received
+	}
+}
+
+func TestProcessMessage_NoRequest(_ *testing.T) {
+	client := NewClient(nil, "test-channel")
+	defer client.Close()
+
+	msg := &redis.Message{
+		Payload: `{"ID": "test-id", "Result": "test-result"}`,
+	}
+
+	client.processMessage(msg)
+}

@@ -21,7 +21,7 @@ type Client struct {
 	cancel   context.CancelFunc
 	wg       *sync.WaitGroup
 	requests map[string]chan<- *Response
-	lock     *sync.RWMutex
+	lock     *sync.Mutex
 	counter  *atomic.Uint64
 	once     *sync.Once
 	id       string
@@ -42,7 +42,7 @@ func NewClient(redisClient *redis.Client, channel string) *Client {
 		channel:  channel,
 		requests: make(map[string]chan<- *Response),
 		wg:       &sync.WaitGroup{},
-		lock:     &sync.RWMutex{},
+		lock:     &sync.Mutex{},
 		counter:  &atomic.Uint64{},
 		once:     &sync.Once{},
 	}
@@ -138,26 +138,33 @@ func (c *Client) handleResponses() {
 			case <-c.ctx.Done():
 				return
 			case msg := <-pubsubChan:
-				resp := &Response{}
-
-				err := json.Unmarshal([]byte(msg.Payload), resp)
-				if err != nil {
-					slog.Error("Error unmarshalling response: " + err.Error())
-					continue
-				}
-
-				c.lock.RLock()
-				respChan, ok := c.requests[resp.ID]
-				c.lock.RUnlock()
-
-				if !ok {
-					continue
-				}
-
-				respChan <- resp
+				c.processMessage(msg)
 			}
 		}
 	}()
+}
+
+// processMessage processes the incoming Redis message and handles the response.
+// It unmarshals the message payload into a Response struct and sends the response
+// to the corresponding request channel.
+func (c *Client) processMessage(msg *redis.Message) {
+	resp := &Response{}
+
+	err := json.Unmarshal([]byte(msg.Payload), resp)
+	if err != nil {
+		slog.Error("Error unmarshalling response: " + err.Error())
+		return
+	}
+
+	c.lock.Lock()
+	respChan, ok := c.requests[resp.ID]
+	c.lock.Unlock()
+
+	if !ok {
+		return
+	}
+
+	respChan <- resp
 }
 
 // addRequest adds a new request to the client's request map and returns a channel to receive the response.
