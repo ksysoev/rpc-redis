@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -167,7 +168,7 @@ func TestServer_AddHandler(t *testing.T) {
 	server := NewServer(redisClient, stream, group, consumer)
 
 	rpcName := "myRPC"
-	handler := func(req Request) (any, error) {
+	handler := func(req *Request) (any, error) {
 		return nil, nil
 	}
 
@@ -298,16 +299,16 @@ func TestParseMessage_ValidMessage(t *testing.T) {
 		t.Errorf("Unexpected error: %v", err)
 	}
 
-	if req.Method() != "add" {
-		t.Errorf("Expected method 'add', but got '%s'", req.Method())
+	if req.Method != "add" {
+		t.Errorf("Expected method 'add', but got '%s'", req.Method)
 	}
 
-	if req.ID() != "123" {
-		t.Errorf("Expected ID '123', but got '%s'", req.ID())
+	if req.ID != "123" {
+		t.Errorf("Expected ID '123', but got '%s'", req.ID)
 	}
 
-	if req.ReplyTo() != "response-channel" {
-		t.Errorf("Expected replyTo 'response-channel', but got '%s'", req.ReplyTo())
+	if req.ReplyTo != "response-channel" {
+		t.Errorf("Expected replyTo 'response-channel', but got '%s'", req.ReplyTo)
 	}
 
 	deadline, ok := req.Context().Deadline()
@@ -431,8 +432,8 @@ func TestServer_HandleResult_PublishResponseError(t *testing.T) {
 	req := NewRequest(context.Background(), "method", "123", "params", "reply-channel")
 	reqErr := errors.New("request error")
 
-	expecetdResp, _ := newResponse(req.ID(), nil, reqErr)
-	expectedJSON, _ := expecetdResp.ToJSON()
+	expecetdResp, _ := NewResponse(req.ID, nil, reqErr)
+	expectedJSON, _ := json.Marshal(expecetdResp)
 
 	expectedError := fmt.Errorf("failed to publish response")
 
@@ -455,8 +456,8 @@ func TestServer_HandleResult_Success(t *testing.T) {
 	req := NewRequest(context.Background(), "method", "123", "params", "reply-channel")
 	result := "result"
 
-	expecetdResp, _ := newResponse(req.ID(), result, nil)
-	expectedJSON, _ := expecetdResp.ToJSON()
+	expecetdResp, _ := NewResponse(req.ID, result, nil)
+	expectedJSON, _ := json.Marshal(expecetdResp)
 
 	mock.ExpectPublish("reply-channel", expectedJSON).SetVal(1)
 
@@ -486,7 +487,7 @@ func TestServer_ProcessMessage_ValidMessageWithExistingHandler(t *testing.T) {
 	}
 
 	isCalled := false
-	handler := func(req Request) (any, error) {
+	handler := func(req *Request) (any, error) {
 		isCalled = true
 		return "test data", nil
 	}
@@ -548,7 +549,7 @@ func TestServer_ProcessMessage_InvalidMessageWithExistingHandler(t *testing.T) {
 	}
 
 	isCalled := false
-	handler := func(req Request) (any, error) {
+	handler := func(req *Request) (any, error) {
 		isCalled = true
 		return nil, nil
 	}
@@ -616,7 +617,7 @@ func TestServer_ProcessMessage_Panic(t *testing.T) {
 		},
 	}
 
-	handler := func(req Request) (any, error) {
+	handler := func(req *Request) (any, error) {
 		panic("test panic")
 	}
 	server.AddHandler("panic", handler)

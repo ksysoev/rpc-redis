@@ -10,7 +10,7 @@ func TestNewResponse(t *testing.T) {
 	result := "success"
 	err := errors.New("some error")
 
-	response, err := newResponse(id, result, err)
+	response, err := NewResponse(id, result, err)
 	if err == nil {
 		t.Errorf("expected error, got nil")
 	}
@@ -20,7 +20,7 @@ func TestNewResponse(t *testing.T) {
 	}
 
 	err = nil
-	response, err = newResponse(id, result, err)
+	response, err = NewResponse(id, result, err)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

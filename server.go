@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -17,7 +18,7 @@ const (
 	DefaultConcurency    = 25
 )
 
-type Handler func(req Request) (any, error)
+type Handler func(req *Request) (any, error)
 
 type token struct{}
 
@@ -214,7 +215,7 @@ func getField(msg redis.XMessage, field string) string {
 
 // parseMessage parses the given Redis XMessage and returns a Request, context.CancelFunc, and error.
 // It extracts the necessary fields from the message and creates a context with optional deadline.
-func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Request, context.CancelFunc, error) {
+func parseMessage(ctx context.Context, method string, msg redis.XMessage) (*Request, context.CancelFunc, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	if deadline := getField(msg, "deadline"); deadline != "" {
@@ -243,22 +244,22 @@ func parseMessage(ctx context.Context, method string, msg redis.XMessage) (Reque
 // If the request does not require a reply, it returns nil.
 // If there is an error creating the response, marshalling it to JSON, or publishing it to Redis,
 // it returns an error with a descriptive message.
-func (s *Server) handleResult(req Request, result any, reqErr error) error {
-	if req.ReplyTo() == "" {
+func (s *Server) handleResult(req *Request, result any, reqErr error) error {
+	if req.ReplyTo == "" {
 		return nil
 	}
 
-	resp, err := newResponse(req.ID(), result, reqErr)
+	resp, err := NewResponse(req.ID, result, reqErr)
 	if err != nil {
 		return fmt.Errorf("error creating response: %w", err)
 	}
 
-	respBytes, err := resp.ToJSON()
+	respBytes, err := json.Marshal(resp)
 	if err != nil {
 		return fmt.Errorf("error marshalling response: %w", err)
 	}
 
-	if err := s.redis.Publish(req.Context(), req.ReplyTo(), respBytes).Err(); err != nil {
+	if err := s.redis.Publish(req.Context(), req.ReplyTo, respBytes).Err(); err != nil {
 		return fmt.Errorf("error publishing response: %w", err)
 	}
 

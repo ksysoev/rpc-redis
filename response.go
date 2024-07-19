@@ -14,7 +14,7 @@ type Response struct {
 }
 
 // newResponse creates a new instance of the Response struct.
-func newResponse(id string, result any, err error) (*Response, error) {
+func NewResponse(id string, result any, err error) (*Response, error) {
 	if err != nil && result != nil || err == nil && result == nil {
 		return nil, errors.New("either result or error must be nil")
 	}
@@ -41,9 +41,4 @@ func newResponse(id string, result any, err error) (*Response, error) {
 // The result is expected to be in JSON format and will be unmarshaled into the provided value.
 func (r *Response) ParseResut(v interface{}) error {
 	return json.Unmarshal(r.Result, v)
-}
-
-// MarshalJSON returns the JSON encoding of the Response struct.
-func (r *Response) ToJSON() ([]byte, error) {
-	return json.Marshal(r)
 }

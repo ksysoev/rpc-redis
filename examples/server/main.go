@@ -23,7 +23,7 @@ func main() {
 
 	rpcServer := rpc.NewServer(redisClient, "echo.EchoService", "echo-group", "echo-consumer")
 
-	rpcServer.AddHandler("Echo", func(req rpc.Request) (any, error) {
+	rpcServer.AddHandler("Echo", func(req *rpc.Request) (any, error) {
 		var echoReq EchoRequest
 
 		err := req.ParseParams(&echoReq)

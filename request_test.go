@@ -23,8 +23,8 @@ func TestRequest(t *testing.T) {
 		t.Errorf("Expected context %v, but got %v", ctx, req.Context())
 	}
 
-	if req.ID() != id {
-		t.Errorf("Expected ID %s, but got %s", id, req.ID())
+	if req.ID != id {
+		t.Errorf("Expected ID %s, but got %s", id, req.ID)
 	}
 
 	var parsedParams testStruct
@@ -42,12 +42,40 @@ func TestRequest(t *testing.T) {
 	}
 
 	// Test Method()
-	if req.Method() != method {
-		t.Errorf("Expected method %s, but got %s", method, req.Method())
+	if req.Method != method {
+		t.Errorf("Expected method %s, but got %s", method, req.Method)
 	}
 
 	// Test ReplyTo()
-	if req.ReplyTo() != replyTo {
-		t.Errorf("Expected replyTo %s, but got %s", replyTo, req.ReplyTo())
+	if req.ReplyTo != replyTo {
+		t.Errorf("Expected replyTo %s, but got %s", replyTo, req.ReplyTo)
+	}
+}
+func TestWithContext(t *testing.T) {
+	ctx := context.Background()
+	method := "GET"
+	id := "123"
+	params := `{"param1": "value1", "param2": "value2"}`
+	replyTo := "replyQueue"
+
+	req := NewRequest(ctx, method, id, params, replyTo)
+
+	newCtx := context.TODO()
+	newReq := req.WithContext(newCtx)
+
+	if newReq.Context() != newCtx {
+		t.Errorf("Expected context %v, but got %v", newCtx, newReq.Context())
+	}
+
+	if newReq.ID != req.ID {
+		t.Errorf("Expected ID %s, but got %s", req.ID, newReq.ID)
+	}
+
+	if newReq.Method != req.Method {
+		t.Errorf("Expected method %s, but got %s", req.Method, newReq.Method)
+	}
+
+	if newReq.ReplyTo != req.ReplyTo {
+		t.Errorf("Expected replyTo %s, but got %s", req.ReplyTo, newReq.ReplyTo)
 	}
 }
