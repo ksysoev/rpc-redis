@@ -23,6 +23,7 @@ type Client struct {
 	requests map[string]chan<- *Response
 	lock     *sync.RWMutex
 	counter  *atomic.Uint64
+	once     *sync.Once
 	id       string
 	channel  string
 }
@@ -43,9 +44,8 @@ func NewClient(redisClient *redis.Client, channel string) *Client {
 		wg:       &sync.WaitGroup{},
 		lock:     &sync.RWMutex{},
 		counter:  &atomic.Uint64{},
+		once:     &sync.Once{},
 	}
-
-	go client.handleResponses()
 
 	return client
 }
@@ -67,6 +67,9 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling params: %w", err)
 	}
+
+	// Ensure that the handleResponses function is only called once
+	c.once.Do(c.handleResponses)
 
 	id := fmt.Sprintf("%d", c.counter.Add(1))
 
@@ -125,34 +128,36 @@ func (c *Client) Close() {
 // The function runs until the context is canceled or an error occurs.
 func (c *Client) handleResponses() {
 	pubsub := c.redis.Subscribe(c.ctx, c.id)
-	defer pubsub.Close()
-
 	pubsubChan := pubsub.Channel()
 
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case msg := <-pubsubChan:
-			resp := &Response{}
+	go func() {
+		defer pubsub.Close()
 
-			err := json.Unmarshal([]byte(msg.Payload), resp)
-			if err != nil {
-				slog.Error("Error unmarshalling response: " + err.Error())
-				continue
+		for {
+			select {
+			case <-c.ctx.Done():
+				return
+			case msg := <-pubsubChan:
+				resp := &Response{}
+
+				err := json.Unmarshal([]byte(msg.Payload), resp)
+				if err != nil {
+					slog.Error("Error unmarshalling response: " + err.Error())
+					continue
+				}
+
+				c.lock.RLock()
+				respChan, ok := c.requests[resp.ID]
+				c.lock.RUnlock()
+
+				if !ok {
+					continue
+				}
+
+				respChan <- resp
 			}
-
-			c.lock.RLock()
-			respChan, ok := c.requests[resp.ID]
-			c.lock.RUnlock()
-
-			if !ok {
-				continue
-			}
-
-			respChan <- resp
 		}
-	}
+	}()
 }
 
 // addRequest adds a new request to the client's request map and returns a channel to receive the response.
