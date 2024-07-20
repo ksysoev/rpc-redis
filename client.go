@@ -146,6 +146,7 @@ func (c *Client) handleResponses() {
 					c.cancel()
 					return
 				}
+
 				c.processMessage(msg)
 			}
 		}

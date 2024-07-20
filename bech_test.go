@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -41,7 +42,12 @@ func BenchmarkPrimeNumbers(b *testing.B) {
 		return &echoReq, nil
 	})
 
-	go rpcServer.Run()
+	go func() {
+		err := rpcServer.Run()
+		if err != nil {
+			b.Errorf("Error running RPC server: %v", err)
+		}
+	}()
 
 	defer rpcServer.Close()
 
@@ -50,11 +56,17 @@ func BenchmarkPrimeNumbers(b *testing.B) {
 	wg := sync.WaitGroup{}
 
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		sem <- struct{}{}
+
 		wg.Add(1)
+
 		go func() {
-			// ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+
+			defer cancel()
+
 			_, err := rpcClient.Call(ctx, "Echo", &TestEchoRequest{Value: "Hello, world!"})
 			if err != nil {
 				b.Errorf("Error calling RPC: %v", err)

@@ -86,6 +86,8 @@ func (s *Server) Run() error {
 		switch {
 		case err == redis.Nil:
 			continue
+		case err == context.Canceled:
+			return nil
 		case err != nil:
 			return fmt.Errorf("error reading stream: %w", err)
 		}
