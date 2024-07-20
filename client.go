@@ -63,39 +63,40 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 		return nil, ErrClientClosed
 	}
 
-	if method == "" {
-		return nil, fmt.Errorf("method cannot be empty")
-	}
-
-	paramsBytes, err := json.Marshal(params)
+	req, err := c.prepareRequest(ctx, method, params)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling params: %w", err)
+		return nil, err
 	}
 
 	// Ensure that the handleResponses function is only called once
 	c.once.Do(c.handleResponses)
 
-	id := fmt.Sprintf("%d", c.counter.Add(1))
+	return c.call(req)
+}
 
-	respChan := c.addRequest(id)
-	defer c.removeRequest(id)
+// call sends the request to the server and waits for the response.
+// It sends the request to the server by publishing the request message to the Redis stream.
+// It then waits for the response on the response channel and returns the response or an error.
+func (c *Client) call(req *Request) (*Response, error) {
+	respChan := c.addRequest(req.ID)
+	defer c.removeRequest(req.ID)
 
 	msg := []string{
-		"id", id,
-		"method", method,
-		"params", string(paramsBytes),
-		"reply_to", c.id,
+		"id", req.ID,
+		"method", req.Method,
+		"params", string(req.params),
+		"reply_to", req.ReplyTo,
 	}
 
-	if deadline, ok := ctx.Deadline(); ok {
+	if deadline, ok := req.ctx.Deadline(); ok {
 		msg = append(msg, "deadline", fmt.Sprintf("%d", deadline.Unix()))
 	}
 
-	if stash := getStash(ctx); stash != "" {
+	if stash := getStash(req.ctx); stash != "" {
 		msg = append(msg, "stash", stash)
 	}
 
-	err = c.redis.XAdd(ctx, &redis.XAddArgs{
+	err := c.redis.XAdd(req.ctx, &redis.XAddArgs{
 		Stream: c.channel,
 		Values: msg,
 	}).Err()
@@ -105,8 +106,8 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	}
 
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-req.ctx.Done():
+		return nil, req.ctx.Err()
 	case <-c.ctx.Done():
 		return nil, ErrClientClosed
 	case resp := <-respChan:
@@ -196,4 +197,28 @@ func (c *Client) removeRequest(id string) {
 	defer c.lock.Unlock()
 
 	delete(c.requests, id)
+}
+
+// prepareRequest prepares a request to be sent to the RPC server.
+// It takes the method name and parameters, marshals the parameters into JSON,
+// and returns a Request object with the necessary information.
+// If the method name is empty or there is an error marshalling the parameters,
+// it returns an error.
+func (c *Client) prepareRequest(ctx context.Context, method string, params any) (*Request, error) {
+	if method == "" {
+		return nil, fmt.Errorf("method cannot be empty")
+	}
+
+	paramsBytes, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling params: %w", err)
+	}
+
+	return &Request{
+		ID:      fmt.Sprintf("%d", c.counter.Add(1)),
+		Method:  method,
+		params:  paramsBytes,
+		ReplyTo: c.id,
+		ctx:     ctx,
+	}, nil
 }
