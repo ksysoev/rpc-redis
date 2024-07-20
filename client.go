@@ -26,12 +26,13 @@ type Client struct {
 	once     *sync.Once
 	id       string
 	channel  string
+	handler  RequestHandler
 }
 
 // NewClient creates a new instance of the Client struct.
 // It takes a Redis client and a channel name as parameters.
 // It returns a pointer to the newly created Client.
-func NewClient(redisClient *redis.Client, channel string) *Client {
+func NewClient(redisClient *redis.Client, channel string, interceptors ...Interceptor) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
@@ -46,6 +47,8 @@ func NewClient(redisClient *redis.Client, channel string) *Client {
 		counter:  &atomic.Uint64{},
 		once:     &sync.Once{},
 	}
+
+	client.handler = useInterceptors(client.call, interceptors)
 
 	return client
 }
@@ -72,6 +75,14 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	c.once.Do(c.handleResponses)
 
 	return c.call(req)
+}
+
+func useInterceptors(handler RequestHandler, interceptors []Interceptor) RequestHandler {
+	for i := len(interceptors) - 1; i >= 0; i-- {
+		handler = interceptors[i](handler)
+	}
+
+	return handler
 }
 
 // call sends the request to the server and waits for the response.
