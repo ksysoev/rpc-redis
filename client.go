@@ -16,23 +16,26 @@ import (
 var ErrClientClosed = errors.New("client closed")
 
 type Client struct {
-	ctx      context.Context
-	redis    *redis.Client
-	cancel   context.CancelFunc
-	wg       *sync.WaitGroup
-	requests map[string]chan<- *Response
-	lock     *sync.Mutex
-	counter  *atomic.Uint64
-	once     *sync.Once
-	id       string
-	channel  string
-	handler  RequestHandler
+	ctx          context.Context
+	redis        *redis.Client
+	cancel       context.CancelFunc
+	wg           *sync.WaitGroup
+	requests     map[string]chan<- *Response
+	lock         *sync.Mutex
+	counter      *atomic.Uint64
+	once         *sync.Once
+	handler      RequestHandler
+	id           string
+	channel      string
+	interceptors []Interceptor
 }
+
+type ClientOption func(*Client)
 
 // NewClient creates a new instance of the Client struct.
 // It takes a Redis client and a channel name as parameters.
 // It returns a pointer to the newly created Client.
-func NewClient(redisClient *redis.Client, channel string, interceptors ...Interceptor) *Client {
+func NewClient(redisClient *redis.Client, channel string, opts ...ClientOption) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
@@ -48,7 +51,11 @@ func NewClient(redisClient *redis.Client, channel string, interceptors ...Interc
 		once:     &sync.Once{},
 	}
 
-	client.handler = useInterceptors(client.call, interceptors)
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	client.handler = useInterceptors(client.call, client.interceptors)
 
 	return client
 }
@@ -232,4 +239,11 @@ func (c *Client) prepareRequest(ctx context.Context, method string, params any) 
 		ReplyTo: c.id,
 		ctx:     ctx,
 	}, nil
+}
+
+// WithInterceptors adds the provided interceptors to the client.
+func WithInterceptors(interceptors ...Interceptor) ClientOption {
+	return func(c *Client) {
+		c.interceptors = interceptors
+	}
 }
