@@ -59,6 +59,10 @@ func NewClient(redisClient *redis.Client, channel string) *Client {
 // If an error occurs during the request or if the server returns an error response,
 // an error is returned with a descriptive error message.
 func (c *Client) Call(ctx context.Context, method string, params any) (*Response, error) {
+	if c.ctx.Err() != nil {
+		return nil, ErrClientClosed
+	}
+
 	if method == "" {
 		return nil, fmt.Errorf("method cannot be empty")
 	}
@@ -137,7 +141,12 @@ func (c *Client) handleResponses() {
 			select {
 			case <-c.ctx.Done():
 				return
-			case msg := <-pubsubChan:
+			case msg, ok := <-pubsubChan:
+				if !ok {
+					c.cancel()
+					return
+				}
+
 				c.processMessage(msg)
 			}
 		}
