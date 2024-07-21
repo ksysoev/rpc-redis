@@ -14,7 +14,7 @@ type TestEchoRequest struct {
 	Value string `json:"value"`
 }
 
-func BenchmarkPrimeNumbers(b *testing.B) {
+func BenchmarkEchoServ(b *testing.B) {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})

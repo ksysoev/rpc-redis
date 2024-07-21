@@ -1,7 +1,9 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -91,7 +93,23 @@ func TestCall_ClientClosed(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	client.Close()
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Errorf("Expected call to return")
+	}
+
+	done = make(chan struct{})
+	go func() {
+		_, err := client.Call(ctx, method, params)
+
+		if err != ErrClientClosed {
+			t.Errorf("Expected error to be ErrClientClosed but got %v", err)
+		}
+
+		close(done)
+	}()
+
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -203,4 +221,100 @@ func TestProcessMessage_NoRequest(_ *testing.T) {
 	}
 
 	client.processMessage(msg)
+}
+func TestWithInterceptors(t *testing.T) {
+	interceptor1 := func(handler RequestHandler) RequestHandler {
+		return func(req *Request) (*Response, error) {
+			// Interceptor 1 logic
+			return handler(req)
+		}
+	}
+
+	interceptor2 := func(handler RequestHandler) RequestHandler {
+		return func(req *Request) (*Response, error) {
+			// Interceptor 2 logic
+			return handler(req)
+		}
+	}
+
+	client := NewClient(nil, "test-channel", WithInterceptors(interceptor1, interceptor2))
+
+	// Assert that the interceptors are correctly added to the client
+	if len(client.interceptors) != 2 {
+		t.Errorf("Expected 2 interceptors, but got %d", len(client.interceptors))
+	}
+}
+
+func TestPrepareRequest(t *testing.T) {
+	c := NewClient(nil, "test-channel")
+
+	ctx := context.Background()
+	method := "test-method"
+	params := struct {
+		Name string
+		Age  int
+	}{
+		Name: "John",
+		Age:  30,
+	}
+
+	req, err := c.prepareRequest(ctx, method, params)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	if req.ID == "" {
+		t.Errorf("Expected request ID to be non-empty")
+	}
+
+	if req.Method != method {
+		t.Errorf("Expected request Method to be '%s', but got '%s'", method, req.Method)
+	}
+
+	expectedParams, _ := json.Marshal(params)
+	if !bytes.Equal(req.params, expectedParams) {
+		t.Errorf("Expected request params to be '%s', but got '%s'", expectedParams, req.params)
+	}
+
+	if req.ReplyTo != c.id {
+		t.Errorf("Expected request ReplyTo to be '%s', but got '%s'", c.id, req.ReplyTo)
+	}
+
+	if req.ctx != ctx {
+		t.Errorf("Expected request ctx to be the same as the provided context")
+	}
+}
+
+func TestPrepareRequest_EmptyMethod(t *testing.T) {
+	c := NewClient(nil, "test-channel")
+
+	ctx := context.Background()
+	params := struct {
+		Name string
+		Age  int
+	}{
+		Name: "John",
+		Age:  30,
+	}
+
+	_, err := c.prepareRequest(ctx, "", params)
+
+	if err == nil {
+		t.Errorf("Expected error due to empty method")
+	}
+}
+
+func TestPrepareRequest_MarshalError(t *testing.T) {
+	c := NewClient(nil, "test-channel")
+
+	ctx := context.Background()
+	method := "test-method"
+	params := make(chan int) // Invalid type for JSON marshaling
+
+	_, err := c.prepareRequest(ctx, method, params)
+
+	if err == nil {
+		t.Errorf("Expected error due to JSON marshaling error")
+	}
 }
