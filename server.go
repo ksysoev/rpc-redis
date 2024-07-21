@@ -25,7 +25,7 @@ type token struct{}
 type Server struct {
 	ctx          context.Context
 	redis        *redis.Client
-	handlers     map[string]Handler
+	handlers     map[string]RequestHandler
 	handlersLock *sync.RWMutex
 	cancel       context.CancelFunc
 	sem          chan struct{}
@@ -33,19 +33,24 @@ type Server struct {
 	stream       string
 	group        string
 	consumer     string
+	interceptors []Interceptor
 }
+
+// ServerOption is a function type that can be used to configure a Server.
+// It takes a pointer to a Server and modifies its properties.
+type ServerOption func(*Server)
 
 // NewServer creates a new instance of the Server struct.
 // It takes a Redis client, stream name, consumer group name, and consumer name as parameters.
 // It returns a pointer to the newly created Server instance.
-func NewServer(redisClient *redis.Client, stream, group, consumer string) *Server {
+func NewServer(redisClient *redis.Client, stream, group, consumer string, opts ...ServerOption) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &Server{
+	srv := &Server{
 		redis:        redisClient,
 		stream:       stream,
 		group:        group,
-		handlers:     make(map[string]Handler),
+		handlers:     make(map[string]RequestHandler),
 		handlersLock: &sync.RWMutex{},
 		ctx:          ctx,
 		cancel:       cancel,
@@ -53,6 +58,12 @@ func NewServer(redisClient *redis.Client, stream, group, consumer string) *Serve
 		sem:          make(chan struct{}, DefaultConcurency),
 		wg:           &sync.WaitGroup{},
 	}
+
+	for _, opt := range opts {
+		opt(srv)
+	}
+
+	return srv
 }
 
 // Run starts the server and continuously reads messages from the Redis stream.
@@ -160,10 +171,15 @@ func (s *Server) processMessage(msg redis.XMessage) {
 
 		defer cancel()
 
-		result, reqErr := handler(req)
+		resp, err := handler(req)
+		if err != nil {
+			slog.Error(fmt.Sprintf("RPC error handling request for %s: %v", method, err))
+			return
+		}
 
-		if err := s.handleResult(req, result, reqErr); err != nil {
-			slog.Error(fmt.Sprintf("RPC error handling result for %s: %v", method, err))
+		if err := s.handleResponse(req, resp); err != nil {
+			slog.Error(fmt.Sprintf("RPC error sending result for %s: %v", method, err))
+			return
 		}
 	}()
 }
@@ -185,12 +201,14 @@ func (s *Server) AddHandler(rpcName string, handler Handler) {
 		panic("rpc handler already exists for " + rpcName)
 	}
 
-	s.handlers[rpcName] = handler
+	reqHandler := useInterceptors(responseWrapper(handler), s.interceptors)
+
+	s.handlers[rpcName] = reqHandler
 }
 
 // getHandler returns the handler function associated with the given RPC name.
 // It also returns a boolean value indicating whether the handler was found or not.
-func (s *Server) getHandler(rpcName string) (Handler, bool) {
+func (s *Server) getHandler(rpcName string) (RequestHandler, bool) {
 	s.handlersLock.RLock()
 	defer s.handlersLock.RUnlock()
 
@@ -241,19 +259,13 @@ func parseMessage(ctx context.Context, method string, msg redis.XMessage) (*Requ
 	return NewRequest(ctx, method, id, params, replyTo), cancel, nil
 }
 
-// handleResult handles the result of a request by creating a response, marshalling it to JSON,
-// and publishing it to Redis.
-// If the request does not require a reply, it returns nil.
-// If there is an error creating the response, marshalling it to JSON, or publishing it to Redis,
-// it returns an error with a descriptive message.
-func (s *Server) handleResult(req *Request, result any, reqErr error) error {
+// handleResponse handles the response by marshalling it into JSON format and publishing it to Redis.
+// If the response's ReplyTo field is empty, the function returns nil.
+// Otherwise, it marshals the response into bytes, publishes it to Redis using the provided context and ReplyTo value,
+// and returns any error encountered during the process.
+func (s *Server) handleResponse(req *Request, resp *Response) error {
 	if req.ReplyTo == "" {
 		return nil
-	}
-
-	resp, err := NewResponse(req.ID, result, reqErr)
-	if err != nil {
-		return fmt.Errorf("error creating response: %w", err)
 	}
 
 	respBytes, err := json.Marshal(resp)
@@ -266,4 +278,25 @@ func (s *Server) handleResult(req *Request, result any, reqErr error) error {
 	}
 
 	return nil
+}
+
+func responseWrapper(handler Handler) RequestHandler {
+	return func(req *Request) (*Response, error) {
+		result, err := handler(req)
+
+		resp, err := NewResponse(req.ID, result, err)
+		if err != nil {
+			return nil, err
+		}
+
+		return resp, nil
+	}
+}
+
+// WithMiddleware is a function that returns a ServerOption which sets the middleware for the server.
+// Middleware is a list of Interceptor functions that will be applied to incoming requests.
+func WithServerInterceptors(interceptors ...Interceptor) ServerOption {
+	return func(s *Server) {
+		s.interceptors = interceptors
+	}
 }
