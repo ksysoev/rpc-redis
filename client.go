@@ -13,18 +13,23 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const (
+	maxNumOfFields = 6
+)
+
 var ErrClientClosed = errors.New("client closed")
 
 type Client struct {
+	msgPools     sync.Pool
 	ctx          context.Context
-	redis        *redis.Client
-	cancel       context.CancelFunc
+	counter      *atomic.Uint64
 	wg           *sync.WaitGroup
 	requests     map[string]chan<- *Response
 	lock         *sync.Mutex
-	counter      *atomic.Uint64
+	cancel       context.CancelFunc
 	once         *sync.Once
 	handler      RequestHandler
+	redis        *redis.Client
 	id           string
 	channel      string
 	interceptors []Interceptor
@@ -51,6 +56,12 @@ func NewClient(redisClient *redis.Client, channel string, opts ...ClientOption) 
 		lock:     &sync.Mutex{},
 		counter:  &atomic.Uint64{},
 		once:     &sync.Once{},
+		msgPools: sync.Pool{
+			New: func() any {
+				msg := make([]string, 0, maxNumOfFields)
+				return &msg
+			},
+		},
 	}
 
 	for _, opt := range opts {
@@ -93,24 +104,31 @@ func (c *Client) call(req *Request) (*Response, error) {
 	respChan := c.addRequest(req.ID)
 	defer c.removeRequest(req.ID)
 
-	msg := []string{
+	msg, _ := c.msgPools.Get().(*[]string)
+
+	defer func() {
+		*msg = (*msg)[:0]
+		c.msgPools.Put(msg)
+	}()
+
+	*msg = append(*msg,
 		"id", req.ID,
 		"method", req.Method,
 		"params", string(req.params),
 		"reply_to", req.ReplyTo,
-	}
+	)
 
 	if deadline, ok := req.ctx.Deadline(); ok {
-		msg = append(msg, "deadline", fmt.Sprintf("%d", deadline.Unix()))
+		*msg = append(*msg, "deadline", fmt.Sprintf("%d", deadline.Unix()))
 	}
 
 	if stash := getStash(req.ctx); stash != "" {
-		msg = append(msg, "stash", stash)
+		*msg = append(*msg, "stash", stash)
 	}
 
 	err := c.redis.XAdd(req.ctx, &redis.XAddArgs{
 		Stream: c.channel,
-		Values: msg,
+		Values: *msg,
 	}).Err()
 
 	if err != nil {
