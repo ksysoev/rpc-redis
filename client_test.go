@@ -93,7 +93,23 @@ func TestCall_ClientClosed(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	client.Close()
 
-	<-done
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Errorf("Expected call to return")
+	}
+
+	done = make(chan struct{})
+	go func() {
+		_, err := client.Call(ctx, method, params)
+
+		if err != ErrClientClosed {
+			t.Errorf("Expected error to be ErrClientClosed but got %v", err)
+		}
+
+		close(done)
+	}()
+
 	select {
 	case <-done:
 	case <-time.After(time.Second):
