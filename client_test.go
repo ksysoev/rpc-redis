@@ -204,3 +204,25 @@ func TestProcessMessage_NoRequest(_ *testing.T) {
 
 	client.processMessage(msg)
 }
+func TestWithInterceptors(t *testing.T) {
+	interceptor1 := func(handler RequestHandler) RequestHandler {
+		return func(req *Request) (*Response, error) {
+			// Interceptor 1 logic
+			return handler(req)
+		}
+	}
+
+	interceptor2 := func(handler RequestHandler) RequestHandler {
+		return func(req *Request) (*Response, error) {
+			// Interceptor 2 logic
+			return handler(req)
+		}
+	}
+
+	client := NewClient(nil, "test-channel", WithInterceptors(interceptor1, interceptor2))
+
+	// Assert that the interceptors are correctly added to the client
+	if len(client.interceptors) != 2 {
+		t.Errorf("Expected 2 interceptors, but got %d", len(client.interceptors))
+	}
+}
