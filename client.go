@@ -30,6 +30,8 @@ type Client struct {
 	interceptors []Interceptor
 }
 
+// ClientOption is a function type that can be used to configure a Client.
+// It takes a pointer to a Client and modifies its properties.
 type ClientOption func(*Client)
 
 // NewClient creates a new instance of the Client struct.
@@ -82,14 +84,6 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	c.once.Do(c.handleResponses)
 
 	return c.handler(req)
-}
-
-func useInterceptors(handler RequestHandler, interceptors []Interceptor) RequestHandler {
-	for i := len(interceptors) - 1; i >= 0; i-- {
-		handler = interceptors[i](handler)
-	}
-
-	return handler
 }
 
 // call sends the request to the server and waits for the response.
