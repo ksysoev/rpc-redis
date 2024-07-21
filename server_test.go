@@ -608,3 +608,29 @@ func TestServer_ProcessMessage_Panic(t *testing.T) {
 		t.Errorf("Unfulfilled expectations: %v", err)
 	}
 }
+func TestWithServerInterceptors(t *testing.T) {
+	interceptor1 := func(handler RequestHandler) RequestHandler {
+		return func(req *Request) (*Response, error) {
+			// Interceptor 1 logic
+			return handler(req)
+		}
+	}
+
+	interceptor2 := func(handler RequestHandler) RequestHandler {
+		return func(req *Request) (*Response, error) {
+			// Interceptor 2 logic
+			return handler(req)
+		}
+	}
+
+	server := NewServer(nil, "", "", "", WithServerInterceptors(interceptor1, interceptor2))
+
+	server.AddHandler("test", func(req *Request) (any, error) {
+		return nil, nil
+	})
+
+	// Verify that the interceptors were added successfully
+	if len(server.interceptors) != 2 {
+		t.Errorf("Expected 2 interceptors, but got %d", len(server.interceptors))
+	}
+}

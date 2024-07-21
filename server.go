@@ -292,3 +292,11 @@ func responseWrapper(handler Handler) RequestHandler {
 		return resp, nil
 	}
 }
+
+// WithMiddleware is a function that returns a ServerOption which sets the middleware for the server.
+// Middleware is a list of Interceptor functions that will be applied to incoming requests.
+func WithServerInterceptors(interceptors ...Interceptor) ServerOption {
+	return func(s *Server) {
+		s.interceptors = interceptors
+	}
+}
