@@ -35,13 +35,17 @@ type Server struct {
 	consumer     string
 }
 
+// ServerOption is a function type that can be used to configure a Server.
+// It takes a pointer to a Server and modifies its properties.
+type ServerOption func(*Server)
+
 // NewServer creates a new instance of the Server struct.
 // It takes a Redis client, stream name, consumer group name, and consumer name as parameters.
 // It returns a pointer to the newly created Server instance.
-func NewServer(redisClient *redis.Client, stream, group, consumer string) *Server {
+func NewServer(redisClient *redis.Client, stream, group, consumer string, opts ...ServerOption) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &Server{
+	srv := &Server{
 		redis:        redisClient,
 		stream:       stream,
 		group:        group,
@@ -53,6 +57,12 @@ func NewServer(redisClient *redis.Client, stream, group, consumer string) *Serve
 		sem:          make(chan struct{}, DefaultConcurency),
 		wg:           &sync.WaitGroup{},
 	}
+
+	for _, opt := range opts {
+		opt(srv)
+	}
+
+	return srv
 }
 
 // Run starts the server and continuously reads messages from the Redis stream.
