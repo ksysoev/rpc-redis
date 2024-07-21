@@ -81,7 +81,7 @@ func (c *Client) Call(ctx context.Context, method string, params any) (*Response
 	// Ensure that the handleResponses function is only called once
 	c.once.Do(c.handleResponses)
 
-	return c.call(req)
+	return c.handler(req)
 }
 
 func useInterceptors(handler RequestHandler, interceptors []Interceptor) RequestHandler {
