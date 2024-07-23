@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -15,7 +16,7 @@ import (
 const (
 	DefaultBatchSize     = 1
 	DefaultBlockInterval = 10 * time.Second
-	DefaultConcurency    = 25
+	DefaultConcurency    = 50
 )
 
 type Handler func(req *Request) (any, error)
@@ -34,6 +35,7 @@ type Server struct {
 	group        string
 	consumer     string
 	interceptors []Interceptor
+	onGoing      *atomic.Int64
 }
 
 // ServerOption is a function type that can be used to configure a Server.
@@ -57,6 +59,7 @@ func NewServer(redisClient *redis.Client, stream, group, consumer string, opts .
 		consumer:     consumer,
 		sem:          make(chan struct{}, DefaultConcurency),
 		wg:           &sync.WaitGroup{},
+		onGoing:      &atomic.Int64{},
 	}
 
 	for _, opt := range opts {
@@ -87,7 +90,7 @@ func (s *Server) Run() error {
 		Consumer: s.consumer,
 		Streams:  []string{s.stream, ">"},
 		Block:    DefaultBlockInterval,
-		Count:    DefaultBatchSize,
+		Count:    DefaultConcurency - s.onGoing.Load(),
 		NoAck:    false,
 	}
 
@@ -150,6 +153,7 @@ func (s *Server) processMessage(msg redis.XMessage) {
 	}
 
 	s.sem <- token{}
+	s.onGoing.Add(1)
 	s.wg.Add(1)
 
 	go func() {
@@ -158,6 +162,7 @@ func (s *Server) processMessage(msg redis.XMessage) {
 				slog.Error(fmt.Sprintf("RPC panic for %s: %v", method, r))
 			}
 
+			s.onGoing.Add(-1)
 			<-s.sem
 			s.wg.Done()
 		}()
