@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	DefaultBatchSize     = 1
 	DefaultBlockInterval = 10 * time.Second
 	DefaultConcurency    = 25
 )

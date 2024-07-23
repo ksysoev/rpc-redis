@@ -142,7 +142,7 @@ func TestServer_Run(t *testing.T) {
 		Consumer: consumer,
 		Streams:  []string{stream, ">"},
 		Block:    DefaultBlockInterval,
-		Count:    DefaultBatchSize,
+		Count:    DefaultConcurency,
 		NoAck:    false,
 	}
 
@@ -249,7 +249,7 @@ func TestServer_Close(t *testing.T) {
 		Consumer: consumer,
 		Streams:  []string{stream, ">"},
 		Block:    DefaultBlockInterval,
-		Count:    DefaultBatchSize,
+		Count:    DefaultConcurency,
 		NoAck:    false,
 	}
 
