@@ -16,7 +16,7 @@ import (
 const (
 	DefaultBatchSize     = 1
 	DefaultBlockInterval = 10 * time.Second
-	DefaultConcurency    = 50
+	DefaultConcurency    = 25
 )
 
 type Handler func(req *Request) (any, error)
@@ -31,11 +31,11 @@ type Server struct {
 	cancel       context.CancelFunc
 	sem          chan struct{}
 	wg           *sync.WaitGroup
+	onGoing      *atomic.Int64
 	stream       string
 	group        string
 	consumer     string
 	interceptors []Interceptor
-	onGoing      *atomic.Int64
 }
 
 // ServerOption is a function type that can be used to configure a Server.
