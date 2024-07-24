@@ -27,7 +27,7 @@ type Server struct {
 	handlers     map[string]RequestHandler
 	handlersLock *sync.RWMutex
 	cancel       context.CancelFunc
-	sem          chan struct{}
+	sem          chan token
 	wg           *sync.WaitGroup
 	stream       string
 	group        string
@@ -54,7 +54,7 @@ func NewServer(redisClient *redis.Client, stream, group, consumer string, opts .
 		ctx:          ctx,
 		cancel:       cancel,
 		consumer:     consumer,
-		sem:          make(chan struct{}, DefaultConcurency),
+		sem:          make(chan token, DefaultConcurency),
 		wg:           &sync.WaitGroup{},
 	}
 
