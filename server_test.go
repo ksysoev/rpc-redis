@@ -244,21 +244,11 @@ func TestServer_Close(t *testing.T) {
 	group := "myGroup"
 	consumer := "myConsumer"
 
-	xReadArgs := &redis.XReadGroupArgs{
-		Group:    group,
-		Consumer: consumer,
-		Streams:  []string{stream, ">"},
-		Block:    DefaultBlockInterval,
-		Count:    1,
-		NoAck:    false,
-	}
-
 	mock.ExpectXGroupCreateMkStream(stream, group, "$").SetVal("OK")
 	mock.ExpectXGroupCreateConsumer(stream, group, consumer).SetVal(1)
-	mock.ExpectXReadGroup(xReadArgs).SetErr(redis.Nil)
 
 	server := NewServer(redisClient, stream, group, consumer)
-	server.sem = make(chan token, 1)
+	server.sem = make(chan token)
 
 	done := make(chan struct{})
 	go func() {
