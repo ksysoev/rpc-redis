@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	DefaultBatchSize     = 1
 	DefaultBlockInterval = 10 * time.Second
 	DefaultConcurency    = 25
 )
@@ -87,11 +86,20 @@ func (s *Server) Run() error {
 		Consumer: s.consumer,
 		Streams:  []string{s.stream, ">"},
 		Block:    DefaultBlockInterval,
-		Count:    DefaultBatchSize,
+		Count:    DefaultConcurency,
 		NoAck:    false,
 	}
 
-	for s.ctx.Err() == nil {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return nil
+		case s.sem <- token{}:
+			<-s.sem
+		}
+
+		readArgs.Count = int64(cap(s.sem) - len(s.sem))
+
 		streams, err := s.redis.XReadGroup(s.ctx, readArgs).Result()
 
 		switch {
@@ -109,8 +117,6 @@ func (s *Server) Run() error {
 			}
 		}
 	}
-
-	return nil
 }
 
 // initReader initializes the reader by creating a stream and a consumer group.

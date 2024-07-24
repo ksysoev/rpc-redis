@@ -52,7 +52,7 @@ func BenchmarkEchoServ(b *testing.B) {
 	defer rpcServer.Close()
 
 	ctx := context.Background()
-	sem := make(chan struct{}, 3)
+	sem := make(chan struct{}, DefaultConcurency)
 	wg := sync.WaitGroup{}
 
 	b.ResetTimer()
