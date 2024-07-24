@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -30,7 +29,6 @@ type Server struct {
 	cancel       context.CancelFunc
 	sem          chan struct{}
 	wg           *sync.WaitGroup
-	onGoing      *atomic.Int64
 	stream       string
 	group        string
 	consumer     string
@@ -58,7 +56,6 @@ func NewServer(redisClient *redis.Client, stream, group, consumer string, opts .
 		consumer:     consumer,
 		sem:          make(chan struct{}, DefaultConcurency),
 		wg:           &sync.WaitGroup{},
-		onGoing:      &atomic.Int64{},
 	}
 
 	for _, opt := range opts {
@@ -89,11 +86,20 @@ func (s *Server) Run() error {
 		Consumer: s.consumer,
 		Streams:  []string{s.stream, ">"},
 		Block:    DefaultBlockInterval,
-		Count:    DefaultConcurency - s.onGoing.Load(),
+		Count:    DefaultConcurency,
 		NoAck:    false,
 	}
 
-	for s.ctx.Err() == nil {
+	for {
+		select {
+		case <-s.ctx.Done():
+			return nil
+		case s.sem <- token{}:
+			<-s.sem
+		}
+
+		readArgs.Count = int64(cap(s.sem) - len(s.sem))
+
 		streams, err := s.redis.XReadGroup(s.ctx, readArgs).Result()
 
 		switch {
@@ -111,8 +117,6 @@ func (s *Server) Run() error {
 			}
 		}
 	}
-
-	return nil
 }
 
 // initReader initializes the reader by creating a stream and a consumer group.
@@ -152,7 +156,6 @@ func (s *Server) processMessage(msg redis.XMessage) {
 	}
 
 	s.sem <- token{}
-	s.onGoing.Add(1)
 	s.wg.Add(1)
 
 	go func() {
@@ -161,7 +164,6 @@ func (s *Server) processMessage(msg redis.XMessage) {
 				slog.Error(fmt.Sprintf("RPC panic for %s: %v", method, r))
 			}
 
-			s.onGoing.Add(-1)
 			<-s.sem
 			s.wg.Done()
 		}()
