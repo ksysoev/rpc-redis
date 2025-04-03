@@ -168,7 +168,7 @@ func TestServer_AddHandler(t *testing.T) {
 	server := NewServer(redisClient, stream, group, consumer)
 
 	rpcName := "myRPC"
-	handler := func(req *Request) (any, error) {
+	handler := func(_ *Request) (any, error) {
 		return nil, nil
 	}
 
@@ -456,7 +456,7 @@ func TestServer_ProcessMessage_ValidMessageWithExistingHandler(t *testing.T) {
 	}
 
 	isCalled := false
-	handler := func(req *Request) (any, error) {
+	handler := func(_ *Request) (any, error) {
 		isCalled = true
 		return "test data", nil
 	}
@@ -518,7 +518,7 @@ func TestServer_ProcessMessage_InvalidMessageWithExistingHandler(t *testing.T) {
 	}
 
 	isCalled := false
-	handler := func(req *Request) (any, error) {
+	handler := func(_ *Request) (any, error) {
 		isCalled = true
 		return nil, nil
 	}
@@ -586,7 +586,7 @@ func TestServer_ProcessMessage_Panic(t *testing.T) {
 		},
 	}
 
-	handler := func(req *Request) (any, error) {
+	handler := func(_ *Request) (any, error) {
 		panic("test panic")
 	}
 	server.AddHandler("panic", handler)
@@ -616,7 +616,7 @@ func TestWithServerInterceptors(t *testing.T) {
 
 	server := NewServer(nil, "", "", "", WithServerInterceptors(interceptor1, interceptor2))
 
-	server.AddHandler("test", func(req *Request) (any, error) {
+	server.AddHandler("test", func(_ *Request) (any, error) {
 		return nil, nil
 	})
 

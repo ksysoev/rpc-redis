@@ -34,8 +34,8 @@ func main() {
 		slog.Info("Received request: " + echoReq.Value)
 
 		var stash Stash
-		err = rpc.ParseStash(req.Context(), &stash)
-		if err != nil {
+
+		if err = rpc.ParseStash(req.Context(), &stash); err != nil {
 			slog.Error("Error parsing stash: " + err.Error())
 			return nil, err
 		}
@@ -46,11 +46,10 @@ func main() {
 	})
 
 	slog.Info("Starting RPC server")
-	err := rpcServer.Run()
-	if err != nil {
+
+	if err := rpcServer.Run(); err != nil {
 		slog.Error("Error running RPC server: " + err.Error())
 	}
 
 	slog.Info("Server stopped")
-
 }
