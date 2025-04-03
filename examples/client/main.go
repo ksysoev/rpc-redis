@@ -42,8 +42,8 @@ func main() {
 	}
 
 	var result EchoRequest
-	err = resp.ParseResut(&result)
-	if err != nil {
+
+	if err = resp.ParseResut(&result); err != nil {
 		slog.Error("Error parsing result: " + err.Error())
 		return
 	}
